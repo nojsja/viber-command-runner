@@ -1,0 +1,234 @@
+import * as cp from 'child_process';
+import * as fs from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
+import * as vscode from 'vscode';
+import { ReleaseCommandDefinition } from '../types';
+import { t } from '../i18n';
+
+export interface RunFinishedResult {
+  exitCode: number;
+  cancelled: boolean;
+}
+
+export class ReleaseRunner {
+  private activeProc: cp.ChildProcess | undefined;
+  private activeRun: { recordId: string } | undefined;
+  private cancelRequested = false;
+  private terminal: vscode.Terminal | undefined;
+
+  constructor(private readonly folder: vscode.WorkspaceFolder) {}
+
+  isRunning(): boolean {
+    return !!this.activeRun;
+  }
+
+  getActiveRecordId(): string | undefined {
+    return this.activeRun?.recordId;
+  }
+
+  writeStdin(text: string): boolean {
+    if (!this.activeProc?.stdin?.writable) {
+      return false;
+    }
+    const payload = text.endsWith('\n') ? text : `${text}\n`;
+    this.activeProc.stdin.write(payload);
+    return true;
+  }
+
+  dispose(): void {
+    this.cancelRequested = true;
+    if (this.activeProc?.pid) {
+      killProcessTree(this.activeProc.pid, 'SIGTERM');
+    }
+    this.activeProc = undefined;
+    this.activeRun = undefined;
+    this.terminal?.dispose();
+    this.terminal = undefined;
+  }
+
+  cancel(): boolean {
+    if (!this.activeProc?.pid) {
+      return false;
+    }
+    this.cancelRequested = true;
+    killProcessTree(this.activeProc.pid, 'SIGTERM');
+    setTimeout(() => {
+      if (this.activeProc?.pid) {
+        killProcessTree(this.activeProc.pid, 'SIGKILL');
+      }
+    }, 2000);
+    return true;
+  }
+
+  async run(
+    definition: ReleaseCommandDefinition,
+    recordId: string,
+    onOutput: (chunk: string, stream: 'stdout' | 'stderr') => void,
+    onFinished: (result: RunFinishedResult) => void,
+  ): Promise<RunFinishedResult> {
+    if (this.activeRun) {
+      throw new Error(t('runner.taskAlreadyRunning'));
+    }
+
+    this.cancelRequested = false;
+
+    const wrapped = [
+      'set +e',
+      definition.command,
+      'ec=$?',
+      'exit $ec',
+    ].join('\n');
+
+    onOutput(`▶ ${definition.label}\n$ ${definition.command}\n`, 'stdout');
+
+    return await new Promise((resolve, reject) => {
+      const useProcessGroup = process.platform !== 'win32';
+      const proc = cp.spawn('bash', ['-lc', wrapped], {
+        cwd: this.folder.uri.fsPath,
+        env: process.env,
+        detached: useProcessGroup,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+
+      if (useProcessGroup && proc.pid) {
+        proc.unref();
+      }
+
+      this.activeProc = proc;
+      this.activeRun = { recordId };
+
+      proc.stdout?.on('data', (buf: Buffer) => {
+        onOutput(buf.toString(), 'stdout');
+      });
+      proc.stderr?.on('data', (buf: Buffer) => {
+        onOutput(buf.toString(), 'stderr');
+      });
+      proc.on('close', (code, signal) => {
+        const exitCode = resolveExitCode(code, signal);
+        const cancelled = this.cancelRequested || isCancelledExit(exitCode);
+        const result: RunFinishedResult = { exitCode, cancelled };
+        onOutput(
+          `\n[${cancelled ? 'cancelled' : 'exit'} ${exitCode}]\n`,
+          cancelled || exitCode !== 0 ? 'stderr' : 'stdout',
+        );
+        this.activeProc = undefined;
+        this.activeRun = undefined;
+        this.cancelRequested = false;
+        onFinished(result);
+        resolve(result);
+      });
+      proc.on('error', (error) => {
+        onOutput(`\n[error] ${error.message}\n`, 'stderr');
+        this.activeProc = undefined;
+        this.activeRun = undefined;
+        this.cancelRequested = false;
+        const result: RunFinishedResult = { exitCode: 1, cancelled: false };
+        onFinished(result);
+        reject(error);
+      });
+    });
+  }
+
+  openExternalTerminal(): void {
+    const terminalName =
+      vscode.workspace.getConfiguration('viberCommandRunner', this.folder.uri).get<string>('terminalName') ??
+      'Viber Command Runner';
+    this.terminal = vscode.window.terminals.find((item) => item.name === terminalName)
+      ?? vscode.window.createTerminal({
+        name: terminalName,
+        cwd: this.folder.uri.fsPath,
+      });
+    this.terminal.show(true);
+  }
+}
+
+function resolveExitCode(code: number | null, signal: NodeJS.Signals | null): number {
+  if (code !== null) {
+    return code;
+  }
+  if (!signal) {
+    return 1;
+  }
+  const signalCodes: Record<string, number> = {
+    SIGINT: 130,
+    SIGTERM: 143,
+    SIGKILL: 137,
+  };
+  return signalCodes[signal] ?? 1;
+}
+
+function isCancelledExit(exitCode: number): boolean {
+  return exitCode === 130 || exitCode === 143 || exitCode === 137;
+}
+
+function killProcessTree(pid: number, signal: NodeJS.Signals): void {
+  if (process.platform === 'win32') {
+    cp.exec(`taskkill /PID ${pid} /T /F`, () => undefined);
+    return;
+  }
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // Process may already be gone.
+    }
+  }
+}
+
+export async function readGitBranch(folder: vscode.WorkspaceFolder): Promise<string> {
+  return await new Promise((resolve) => {
+    cp.exec('git rev-parse --abbrev-ref HEAD', { cwd: folder.uri.fsPath }, (error, stdout) => {
+      resolve(error ? 'unknown' : stdout.trim() || 'unknown');
+    });
+  });
+}
+
+export async function readPubspecVersion(folder: vscode.WorkspaceFolder): Promise<{ version?: string; build?: string }> {
+  try {
+    const pubspecPath = path.join(folder.uri.fsPath, 'pubspec.yaml');
+    const content = await fs.readFile(pubspecPath, 'utf8');
+    const match = content.match(/^version:\s*(.+)$/m);
+    if (!match) {
+      return {};
+    }
+    const raw = match[1].trim();
+    const [version, build] = raw.split('+');
+    return { version, build };
+  } catch {
+    return {};
+  }
+}
+
+export async function resolveOperator(
+  folder: vscode.WorkspaceFolder,
+  secrets: vscode.SecretStorage,
+): Promise<{ name: string; email?: string }> {
+  const configured = vscode.workspace.getConfiguration('viberCommandRunner', folder.uri).get<string>('operator')?.trim();
+  if (configured) {
+    return { name: configured };
+  }
+
+  const gitName = await execText('git config user.name', folder.uri.fsPath);
+  const gitEmail = await execText('git config user.email', folder.uri.fsPath);
+  if (gitName) {
+    return { name: gitName, email: gitEmail || undefined };
+  }
+
+  const secretName = await secrets.get('viberCommandRunner.operatorName');
+  if (secretName) {
+    return { name: secretName };
+  }
+
+  return { name: os.userInfo().username || 'unknown' };
+}
+
+async function execText(command: string, cwd: string): Promise<string> {
+  return await new Promise((resolve) => {
+    cp.exec(command, { cwd }, (error, stdout) => {
+      resolve(error ? '' : stdout.trim());
+    });
+  });
+}

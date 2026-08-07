@@ -1,0 +1,156 @@
+{
+  "name": "viber-command-runner",
+  "displayName": "Viber Command Runner",
+  "description": "VS Code 命令运行面板：一键执行 workspace 脚本、内置终端日志、命令历史与 OSS 同步",
+  "version": "0.1.0",
+  "publisher": "nojsja",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nojsja/viber-command-runner.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "viberCommandRunner",
+          "title": "Command Runner",
+          "icon": "media/rocket.svg"
+        }
+      ]
+    },
+    "views": {
+      "viberCommandRunner": [
+        {
+          "type": "webview",
+          "id": "viberCommandRunner.launcher",
+          "name": "Launcher"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "viberCommandRunner.openPanel",
+        "title": "Viber Command Runner: 打开命令面板",
+        "icon": "$(rocket)",
+        "category": "Viber Command Runner"
+      },
+      {
+        "command": "viberCommandRunner.refresh",
+        "title": "Viber Command Runner: 刷新命令面板",
+        "icon": "$(refresh)",
+        "category": "Viber Command Runner"
+      },
+      {
+        "command": "viberCommandRunner.openSettings",
+        "title": "Viber Command Runner: 打开扩展设置",
+        "category": "Viber Command Runner"
+      },
+      {
+        "command": "viberCommandRunner.syncOss",
+        "title": "Viber Command Runner: 同步 OSS 执行记录",
+        "icon": "$(cloud-upload)",
+        "category": "Viber Command Runner"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "viberCommandRunner.openPanel",
+          "when": "view == viberCommandRunner.launcher",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Viber Command Runner",
+      "properties": {
+        "viberCommandRunner.commandsSource": {
+          "type": "string",
+          "enum": [
+            "command-runner",
+            "viberCommandRunner"
+          ],
+          "default": "command-runner",
+          "description": "命令来源：读取 workspace 的 command-runner.commands 或 viberCommandRunner.commands"
+        },
+        "viberCommandRunner.commands": {
+          "type": "object",
+          "default": {},
+          "description": "自定义命令映射（label -> shell command）"
+        },
+        "viberCommandRunner.terminalName": {
+          "type": "string",
+          "default": "Viber Command Runner",
+          "description": "执行脚本时使用的终端名称"
+        },
+        "viberCommandRunner.oss.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否启用 OSS 执行记录同步"
+        },
+        "viberCommandRunner.oss.region": {
+          "type": "string",
+          "default": "oss-cn-beijing",
+          "description": "阿里云 OSS Region"
+        },
+        "viberCommandRunner.oss.bucket": {
+          "type": "string",
+          "default": "",
+          "description": "OSS Bucket 名称"
+        },
+        "viberCommandRunner.oss.objectKey": {
+          "type": "string",
+          "default": "viber/devtools/command-runner/history/global.json",
+          "description": "执行记录 JSON 在 OSS 上的 Object Key"
+        },
+        "viberCommandRunner.oss.endpoint": {
+          "type": "string",
+          "default": "",
+          "description": "可选自定义 Endpoint，留空则根据 region 自动推断"
+        },
+        "viberCommandRunner.operator": {
+          "type": "string",
+          "default": "",
+          "description": "操作人显示名，留空则自动读取 git config user.name / 系统用户名"
+        },
+        "viberCommandRunner.uiLanguage": {
+          "type": "string",
+          "enum": [
+            "en",
+            "zh"
+          ],
+          "default": "en",
+          "enumDescriptions": [
+            "English UI (default)",
+            "中文界面"
+          ],
+          "description": "Command console UI language / 操作台界面语言"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npm run compile && vsce package --no-dependencies",
+    "lint": "tsc -p ./ --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.1",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "ali-oss": "^6.21.0"
+  }
+}
