@@ -27,6 +27,11 @@
   const terminalSticky = document.getElementById('terminal-sticky');
   const terminalStickyOutput = document.getElementById('terminal-sticky-output');
   const terminalStickyStatus = document.getElementById('terminal-sticky-status');
+  const terminalStickyPreview = document.getElementById('terminal-sticky-preview');
+  const terminalPanel = document.getElementById('terminal-panel');
+  const terminalPanelPreview = document.getElementById('terminal-panel-preview');
+  const btnStickyFold = document.getElementById('btn-sticky-fold');
+  const btnTerminalPanelFold = document.getElementById('btn-terminal-panel-fold');
   const btnStickyHide = document.getElementById('btn-sticky-hide');
   const btnStickyShow = document.getElementById('btn-sticky-show');
   const inputOverlay = document.getElementById('input-overlay');
@@ -37,6 +42,8 @@
   const inputSubmit = document.getElementById('input-submit');
   const inputCancel = document.getElementById('input-cancel');
   const inputClose = document.getElementById('input-close');
+  const globalLoading = document.getElementById('global-loading');
+  const globalLoadingText = document.getElementById('global-loading-text');
 
   /** @type {string} */
   let terminalBuffer = '';
@@ -62,6 +69,13 @@
     if (terminalStickyOutput) {
       terminalStickyOutput.scrollTop = terminalStickyOutput.scrollHeight;
     }
+  });
+
+  btnStickyFold?.addEventListener('click', () => {
+    toggleTerminalFold('sticky');
+  });
+  btnTerminalPanelFold?.addEventListener('click', () => {
+    toggleTerminalFold('panel');
   });
 
   historyArchiveFooter?.addEventListener('click', (event) => {
@@ -158,6 +172,10 @@
 
   window.addEventListener('message', (event) => {
     const message = event.data;
+    if (message.type === 'loading') {
+      setGlobalLoading(message.active, message.messageKey);
+      return;
+    }
     if (message.type === 'state') {
       state = message.payload;
       if (state?.uiLanguage && state.uiLanguage !== i18n.getLocale()) {
@@ -215,6 +233,20 @@
 
   vscode.postMessage({ type: 'ready' });
 
+  setTerminalExpanded('sticky', true, false);
+  setTerminalExpanded('panel', true, false);
+
+  function setGlobalLoading(active, messageKey) {
+    const show = !!active;
+    globalLoading?.classList.toggle('hidden', !show);
+    globalLoading?.setAttribute('aria-busy', show ? 'true' : 'false');
+    document.body.classList.toggle('global-loading-active', show);
+
+    if (messageKey && globalLoadingText) {
+      globalLoadingText.textContent = t(messageKey);
+    }
+  }
+
   window.addEventListener('resize', () => {
     positionStickyTerminal();
   });
@@ -269,6 +301,7 @@
     renderCommandGroups();
 
     renderHistorySection(true);
+    syncTerminalFold();
     updateTerminalChrome();
   }
 
@@ -404,6 +437,60 @@
     });
   }
 
+  function toggleTerminalFold(target) {
+    const expanded = target === 'sticky'
+      ? terminalSticky?.classList.contains('terminal-collapsed')
+      : terminalPanel?.classList.contains('terminal-collapsed');
+    setTerminalExpanded(target, !!expanded, true);
+  }
+
+  function syncTerminalFold() {
+    const fold = state?.terminalFold;
+    if (!fold) {
+      return;
+    }
+    setTerminalExpanded('sticky', fold.sticky !== false, false);
+    setTerminalExpanded('panel', fold.panel !== false, false);
+  }
+
+  function setTerminalExpanded(target, expanded, persist) {
+    const root = target === 'sticky' ? terminalSticky : terminalPanel;
+    const toggle = target === 'sticky' ? btnStickyFold : btnTerminalPanelFold;
+    root?.classList.toggle('terminal-collapsed', !expanded);
+    toggle?.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    toggle?.setAttribute('aria-label', t(expanded ? 'terminal.foldCollapse' : 'terminal.foldExpand'));
+    updateTerminalPreview();
+    if (target === 'sticky') {
+      requestAnimationFrame(() => positionStickyTerminal());
+    }
+    if (persist) {
+      vscode.postMessage({ type: 'setTerminalFold', target, expanded });
+    }
+  }
+
+  function updateTerminalPreview() {
+    const preview = terminalPreviewLine();
+    if (terminalStickyPreview) {
+      terminalStickyPreview.textContent = preview;
+    }
+    if (terminalPanelPreview) {
+      terminalPanelPreview.textContent = preview;
+    }
+  }
+
+  function terminalPreviewLine() {
+    const clean = terminalBuffer.trimEnd();
+    if (!clean) {
+      return '';
+    }
+    const lines = clean.split('\n').filter((line) => line.trim());
+    if (!lines.length) {
+      return '';
+    }
+    const last = lines[lines.length - 1].trim();
+    return last.length > 96 ? `${last.slice(0, 93)}...` : last;
+  }
+
   function updateTerminalChrome() {
     const isRunning = !!state?.runningRecordId;
     const latestRecord = state?.records?.[0];
@@ -446,6 +533,8 @@
       terminalStickyStatus.textContent = t('terminal.failed', { exit: exitHint });
       terminalStickyStatus.className = 'terminal-status failed';
     }
+
+    updateTerminalPreview();
   }
 
   function renderHistorySection(resetPageOnLatestChange) {

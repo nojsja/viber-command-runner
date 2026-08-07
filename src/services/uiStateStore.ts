@@ -3,9 +3,15 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { ensureWorkspaceDataDir, getWorkspaceDataDir } from './userDataPaths';
 
+export interface TerminalFoldState {
+  sticky: boolean;
+  panel: boolean;
+}
+
 interface UiStateFile {
   version: 1;
   groupFold: Record<string, boolean>;
+  terminalFold: TerminalFoldState;
 }
 
 const DEFAULT_GROUP_ORDER = ['release', 'custom'] as const;
@@ -34,9 +40,14 @@ export class UiStateStore {
       this.state = {
         version: 1,
         groupFold: parsed.groupFold ?? defaultGroupFold(),
+        terminalFold: normalizeTerminalFold(parsed.terminalFold),
       };
     } catch {
-      this.state = { version: 1, groupFold: defaultGroupFold() };
+      this.state = {
+        version: 1,
+        groupFold: defaultGroupFold(),
+        terminalFold: defaultTerminalFold(),
+      };
     }
     return this.state;
   }
@@ -46,11 +57,23 @@ export class UiStateStore {
     return mergeGroupFold(current.groupFold, groupIds);
   }
 
+  async getTerminalFold(): Promise<TerminalFoldState> {
+    const current = await this.load();
+    return { ...current.terminalFold };
+  }
+
   async setGroupFold(groupId: string, open: boolean): Promise<Record<string, boolean>> {
     const current = await this.load();
     current.groupFold[groupId] = open;
     await fs.writeFile(this.filePath, JSON.stringify(current, null, 2), 'utf8');
     return current.groupFold;
+  }
+
+  async setTerminalFold(target: keyof TerminalFoldState, expanded: boolean): Promise<TerminalFoldState> {
+    const current = await this.load();
+    current.terminalFold[target] = expanded;
+    await fs.writeFile(this.filePath, JSON.stringify(current, null, 2), 'utf8');
+    return { ...current.terminalFold };
   }
 
   async saveGroupFold(groupFold: Record<string, boolean>): Promise<void> {
@@ -66,6 +89,18 @@ export function defaultGroupFold(groupIds: string[] = [...DEFAULT_GROUP_ORDER]):
     fold[id] = index === 0;
   });
   return fold;
+}
+
+export function defaultTerminalFold(): TerminalFoldState {
+  return { sticky: true, panel: true };
+}
+
+function normalizeTerminalFold(value: Partial<TerminalFoldState> | undefined): TerminalFoldState {
+  const defaults = defaultTerminalFold();
+  return {
+    sticky: typeof value?.sticky === 'boolean' ? value.sticky : defaults.sticky,
+    panel: typeof value?.panel === 'boolean' ? value.panel : defaults.panel,
+  };
 }
 
 function mergeGroupFold(saved: Record<string, boolean>, groupIds: string[]): Record<string, boolean> {

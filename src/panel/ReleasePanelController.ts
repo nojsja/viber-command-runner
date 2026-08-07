@@ -8,7 +8,7 @@ import {
   buildCommandDefinition,
 } from '../services/commandCatalog';
 import { CustomCommandStore } from '../services/customCommandStore';
-import { UiStateStore } from '../services/uiStateStore';
+import { UiStateStore, defaultTerminalFold } from '../services/uiStateStore';
 import { buildOperatorProfile, ReleaseHistoryStore } from '../services/releaseHistoryStore';
 import { OssSyncService } from '../services/ossSyncService';
 import {
@@ -205,6 +205,14 @@ export class ReleasePanelController {
       return this.buildState();
     }
     await this.uiState.setGroupFold(groupId, open);
+    return this.buildState();
+  }
+
+  async setTerminalFold(target: 'sticky' | 'panel', expanded: boolean): Promise<PanelState> {
+    if (!this.uiState) {
+      return this.buildState();
+    }
+    await this.uiState.setTerminalFold(target, expanded);
     return this.buildState();
   }
 
@@ -405,6 +413,7 @@ export class ReleasePanelController {
     const commandGroups = await this.loadCommandGroups();
     const commands = flattenCommands(commandGroups);
     const groupFold = await this.uiState!.getGroupFold(commandGroups.map((group) => group.id));
+    const terminalFold = await this.uiState!.getTerminalFold();
     const operator = await resolveOperator(folder, this.secrets);
     const branch = await readGitBranch(folder);
     const version = await readPubspecVersion(folder);
@@ -425,6 +434,7 @@ export class ReleasePanelController {
       runningRecordId: this.runningRecordId,
       workspaceName: folder.name,
       uiLanguage: getUiLanguage(),
+      terminalFold,
     };
   }
 
@@ -442,6 +452,7 @@ export class ReleasePanelController {
       runningRecordId: this.runningRecordId,
       workspaceName: t('empty.noWorkspace'),
       uiLanguage: getUiLanguage(),
+      terminalFold: defaultTerminalFold(),
     };
   }
 

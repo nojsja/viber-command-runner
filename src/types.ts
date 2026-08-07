@@ -67,6 +67,7 @@ export type PanelMessage =
   | { type: 'addCustomCommand'; label: string; command: string }
   | { type: 'removeCustomCommand'; customId: string }
   | { type: 'setGroupFold'; groupId: string; open: boolean }
+  | { type: 'setTerminalFold'; target: 'sticky' | 'panel'; expanded: boolean }
   | { type: 'refresh' }
   | { type: 'syncOss' }
   | { type: 'openSettings' }
@@ -83,6 +84,7 @@ export type InteractiveShortcut = {
 
 export type ExtensionMessage =
   | { type: 'state'; payload: PanelState }
+  | { type: 'loading'; active: boolean; messageKey?: 'loading.initial' | 'loading.refresh' | 'loading.sync' }
   | { type: 'toast'; level: 'info' | 'warn' | 'error'; message: string }
   | { type: 'runStarted'; recordId: string; label: string }
   | { type: 'terminalClear' }
@@ -107,4 +109,8 @@ export interface PanelState {
   runningRecordId?: string;
   workspaceName: string;
   uiLanguage: 'en' | 'zh';
+  terminalFold: {
+    sticky: boolean;
+    panel: boolean;
+  };
 }

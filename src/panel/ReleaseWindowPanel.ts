@@ -52,18 +52,12 @@ export class ReleaseWindowPanel {
       null,
       this.disposables,
     );
-
-    void this.controller.bootstrap(true).then((state) => {
-      postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
-    });
   }
 
   public static createOrShow(extensionUri: vscode.Uri, secrets: vscode.SecretStorage): void {
     if (ReleaseWindowPanel.currentPanel) {
       ReleaseWindowPanel.currentPanel.panel.reveal(vscode.ViewColumn.Active, false);
-      void ReleaseWindowPanel.currentPanel.controller.bootstrap(true).then((state) => {
-        postExtensionMessage(ReleaseWindowPanel.currentPanel!.panel.webview, { type: 'state', payload: state });
-      });
+      void ReleaseWindowPanel.currentPanel.loadAndPostState('refresh');
       return;
     }
 
@@ -88,11 +82,11 @@ export class ReleaseWindowPanel {
   private async handleMessage(message: PanelMessage): Promise<void> {
     switch (message.type) {
       case 'ready':
-      case 'refresh': {
-        const state = await this.controller.bootstrap(true);
-        postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
+        await this.loadAndPostState('initial');
         break;
-      }
+      case 'refresh':
+        await this.loadAndPostState('refresh');
+        break;
       case 'runCommand': {
         void this.controller.runCommand(message.commandKey);
         break;
@@ -123,11 +117,15 @@ export class ReleaseWindowPanel {
         void this.controller.setGroupFold(message.groupId, message.open);
         break;
       }
-      case 'syncOss': {
-        const state = await this.controller.syncOss(true);
-        postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
+      case 'setTerminalFold': {
+        void this.controller.setTerminalFold(message.target, message.expanded).then((state) => {
+          postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
+        });
         break;
       }
+      case 'syncOss':
+        await this.loadAndPostState('sync');
+        break;
       case 'openSettings':
         await vscode.commands.executeCommand('workbench.action.openSettings', 'viberCommandRunner');
         break;
@@ -156,6 +154,33 @@ export class ReleaseWindowPanel {
     while (this.disposables.length) {
       this.disposables.pop()?.dispose();
     }
+  }
+
+  private async loadAndPostState(mode: 'initial' | 'refresh' | 'sync'): Promise<void> {
+    const messageKey = mode === 'sync' ? 'loading.sync' : mode === 'refresh' ? 'loading.refresh' : 'loading.initial';
+    postExtensionMessage(this.panel.webview, { type: 'loading', active: true, messageKey });
+    try {
+      if (mode === 'sync') {
+        const state = await this.controller.syncOss(true);
+        postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
+        return;
+      }
+
+      const syncOss = mode === 'refresh';
+      const state = await this.controller.bootstrap(syncOss);
+      postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
+
+      if (mode === 'initial') {
+        void this.backgroundSyncOss();
+      }
+    } finally {
+      postExtensionMessage(this.panel.webview, { type: 'loading', active: false });
+    }
+  }
+
+  private async backgroundSyncOss(): Promise<void> {
+    const state = await this.controller.syncOss(false);
+    postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
   }
 
   private renderHtml(extensionUri: vscode.Uri, webview: vscode.Webview): string {
@@ -197,15 +222,21 @@ export class ReleaseWindowPanel {
 
     <section id="terminal-sticky" class="terminal-sticky hidden" aria-hidden="true">
       <div class="terminal-sticky-inner panel">
-        <div class="panel-head">
-          <h2 data-i18n="terminal.runLog">Run Log</h2>
+        <div class="panel-head terminal-head">
+          <button id="btn-sticky-fold" type="button" class="terminal-fold-toggle" aria-expanded="true">
+            <span class="terminal-fold-chevron" aria-hidden="true"></span>
+            <span class="terminal-fold-title" data-i18n="terminal.runLog">Run Log</span>
+            <span id="terminal-sticky-preview" class="terminal-fold-preview"></span>
+          </button>
           <div class="terminal-sticky-actions">
             <span id="terminal-sticky-status" class="terminal-status running" data-i18n="terminal.running">Running...</span>
             <button id="btn-sticky-stop" class="danger terminal-stop-btn hidden" type="button" data-i18n="btn.abort">Abort</button>
             <button id="btn-sticky-hide" class="ghost" type="button" data-i18n="btn.hide">Hide</button>
           </div>
         </div>
-        <pre id="terminal-sticky-output" class="terminal-output terminal-sticky-output"></pre>
+        <div class="terminal-sticky-body">
+          <pre id="terminal-sticky-output" class="terminal-output terminal-sticky-output"></pre>
+        </div>
       </div>
     </section>
 
@@ -246,16 +277,22 @@ export class ReleaseWindowPanel {
       </section>
     </div>
 
-    <section class="panel terminal-panel">
-      <div class="panel-head">
-        <h2 data-i18n="terminal.title">Release Terminal</h2>
+    <section id="terminal-panel" class="panel terminal-panel">
+      <div class="panel-head terminal-head">
+        <button id="btn-terminal-panel-fold" type="button" class="terminal-fold-toggle" aria-expanded="true">
+          <span class="terminal-fold-chevron" aria-hidden="true"></span>
+          <span class="terminal-fold-title" data-i18n="terminal.title">Release Terminal</span>
+          <span id="terminal-panel-preview" class="terminal-fold-preview"></span>
+        </button>
         <div class="terminal-panel-actions">
           <button id="btn-sticky-show" class="ghost hidden" type="button" data-i18n="btn.showFloatingTerminal">Show Floating Terminal</button>
           <button id="btn-terminal-stop" class="danger terminal-stop-btn hidden" type="button" data-i18n="btn.abort">Abort</button>
           <span id="terminal-status" class="terminal-status" data-i18n="terminal.ready">Ready</span>
         </div>
       </div>
-      <pre id="terminal-output" class="terminal-output"></pre>
+      <div class="terminal-panel-body">
+        <pre id="terminal-output" class="terminal-output"></pre>
+      </div>
     </section>
   </div>
 
@@ -279,6 +316,13 @@ export class ReleaseWindowPanel {
         <button id="input-submit" type="button" data-i18n="btn.confirm">Confirm</button>
         <button id="input-cancel" class="ghost" type="button" data-i18n="btn.cancel">Cancel</button>
       </div>
+    </div>
+  </div>
+
+  <div id="global-loading" class="global-loading" aria-live="polite" aria-busy="true">
+    <div class="global-loading-card">
+      <span class="global-loading-spinner" aria-hidden="true"></span>
+      <span id="global-loading-text" data-i18n="loading.initial">Loading command console...</span>
     </div>
   </div>
 
