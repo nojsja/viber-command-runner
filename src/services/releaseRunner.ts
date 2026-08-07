@@ -11,6 +11,8 @@ export interface RunFinishedResult {
   cancelled: boolean;
 }
 
+let cachedShellEnv: NodeJS.ProcessEnv | undefined;
+
 export class ReleaseRunner {
   private activeProc: cp.ChildProcess | undefined;
   private activeRun: { recordId: string } | undefined;
@@ -82,11 +84,14 @@ export class ReleaseRunner {
 
     onOutput(`▶ ${definition.label}\n$ ${definition.command}\n`, 'stdout');
 
+    const shell = resolveShellExecutable();
+    const env = await resolveCommandEnvironment();
+
     return await new Promise((resolve, reject) => {
       const useProcessGroup = process.platform !== 'win32';
-      const proc = cp.spawn('bash', ['-lc', wrapped], {
+      const proc = cp.spawn(shell, ['-ilc', wrapped], {
         cwd: this.folder.uri.fsPath,
-        env: process.env,
+        env,
         detached: useProcessGroup,
         stdio: ['pipe', 'pipe', 'pipe'],
       });
@@ -226,9 +231,120 @@ export async function resolveOperator(
 }
 
 async function execText(command: string, cwd: string): Promise<string> {
+  const shell = resolveShellExecutable();
+  const env = await resolveCommandEnvironment();
   return await new Promise((resolve) => {
-    cp.exec(command, { cwd }, (error, stdout) => {
+    cp.exec(command, { cwd, env, shell }, (error, stdout) => {
       resolve(error ? '' : stdout.trim());
     });
   });
+}
+
+function resolveShellExecutable(): string {
+  const configured = vscode.workspace
+    .getConfiguration('viberCommandRunner')
+    .get<string>('shellPath')
+    ?.trim();
+  if (configured) {
+    return configured;
+  }
+
+  const fromEnv = process.env.SHELL?.trim();
+  if (fromEnv) {
+    return fromEnv;
+  }
+
+  if (process.platform === 'win32') {
+    return process.env.COMSPEC || 'cmd.exe';
+  }
+
+  return process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash';
+}
+
+async function resolveCommandEnvironment(): Promise<NodeJS.ProcessEnv> {
+  if (cachedShellEnv) {
+    return { ...cachedShellEnv };
+  }
+
+  const shell = resolveShellExecutable();
+  if (process.platform === 'win32') {
+    cachedShellEnv = augmentPath(process.env);
+    return { ...cachedShellEnv };
+  }
+
+  try {
+    const shellEnv = await loadShellEnvironment(shell);
+    cachedShellEnv = {
+      ...process.env,
+      ...shellEnv,
+      PATH: shellEnv.PATH || process.env.PATH,
+    };
+  } catch {
+    cachedShellEnv = augmentPath(process.env);
+  }
+
+  return { ...cachedShellEnv };
+}
+
+function loadShellEnvironment(shell: string): Promise<NodeJS.ProcessEnv> {
+  return new Promise((resolve, reject) => {
+    cp.execFile(
+      shell,
+      ['-ilc', 'env -0'],
+      {
+        encoding: 'buffer',
+        maxBuffer: 10 * 1024 * 1024,
+        timeout: 15_000,
+      },
+      (error, stdout) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(parseEnv0(stdout));
+      },
+    );
+  });
+}
+
+function parseEnv0(buffer: Buffer): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const part of buffer.toString('utf8').split('\0')) {
+    if (!part) {
+      continue;
+    }
+    const index = part.indexOf('=');
+    if (index <= 0) {
+      continue;
+    }
+    env[part.slice(0, index)] = part.slice(index + 1);
+  }
+  return env;
+}
+
+function augmentPath(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const home = os.homedir();
+  const extras = [
+    path.join(home, '.pub-cache', 'bin'),
+    path.join(home, '.shorebird', 'bin'),
+    path.join(home, '.local', 'bin'),
+    path.join(home, 'flutter', 'bin'),
+    path.join(home, 'fvm', 'default', 'bin'),
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+  ];
+
+  const current = env.PATH || '';
+  const parts = current.split(path.delimiter).filter(Boolean);
+  const merged = [...parts];
+  for (const item of extras) {
+    if (!merged.includes(item)) {
+      merged.push(item);
+    }
+  }
+
+  return {
+    ...env,
+    PATH: merged.join(path.delimiter),
+  };
 }

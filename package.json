@@ -92,6 +92,11 @@
           "default": "Viber Command Runner",
           "description": "执行脚本时使用的终端名称"
         },
+        "viberCommandRunner.shellPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional shell executable for embedded command runner (e.g. /bin/zsh). Leave empty to auto-detect from $SHELL."
+        },
         "viberCommandRunner.oss.enabled": {
           "type": "boolean",
           "default": false,
