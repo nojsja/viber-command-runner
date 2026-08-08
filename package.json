@@ -149,8 +149,11 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
+    "compile": "npm run compile:ext && npm run compile:webview",
+    "compile:ext": "tsc -p ./",
+    "compile:webview": "npm run build --prefix webview",
     "watch": "tsc -watch -p ./",
+    "watch:webview": "npm run dev --prefix webview",
     "package": "npm run compile && vsce package",
     "lint": "tsc -p ./ --noEmit"
   },
