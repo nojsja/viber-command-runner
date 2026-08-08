@@ -75,21 +75,15 @@ export class ReleaseRunner {
 
     this.cancelRequested = false;
 
-    const wrapped = [
-      'set +e',
-      definition.command,
-      'ec=$?',
-      'exit $ec',
-    ].join('\n');
-
     onOutput(`▶ ${definition.label}\n$ ${definition.command}\n`, 'stdout');
 
     const shell = resolveShellExecutable();
     const env = await resolveCommandEnvironment();
+    const { executable, args } = buildShellInvocation(shell, definition.command);
 
     return await new Promise((resolve, reject) => {
       const useProcessGroup = process.platform !== 'win32';
-      const proc = cp.spawn(shell, ['-ilc', wrapped], {
+      const proc = cp.spawn(executable, args, {
         cwd: this.folder.uri.fsPath,
         env,
         detached: useProcessGroup,
@@ -104,10 +98,10 @@ export class ReleaseRunner {
       this.activeRun = { recordId };
 
       proc.stdout?.on('data', (buf: Buffer) => {
-        onOutput(buf.toString(), 'stdout');
+        onOutput(decodeShellOutput(buf), 'stdout');
       });
       proc.stderr?.on('data', (buf: Buffer) => {
-        onOutput(buf.toString(), 'stderr');
+        onOutput(decodeShellOutput(buf), 'stderr');
       });
       proc.on('close', (code, signal) => {
         const exitCode = resolveExitCode(code, signal);
@@ -145,6 +139,53 @@ export class ReleaseRunner {
         cwd: this.folder.uri.fsPath,
       });
     this.terminal.show(true);
+  }
+}
+
+interface ShellInvocation {
+  executable: string;
+  args: string[];
+}
+
+function buildShellInvocation(shell: string, command: string): ShellInvocation {
+  if (process.platform !== 'win32') {
+    const wrapped = ['set +e', command, 'ec=$?', 'exit $ec'].join('\n');
+    return { executable: shell, args: ['-ilc', wrapped] };
+  }
+
+  const shellBase = path.basename(shell).toLowerCase();
+  if (shellBase === 'cmd.exe' || shellBase === 'cmd') {
+    // cmd.exe uses /c (not bash -ilc). Without /c it stays interactive and never exits.
+    return { executable: shell, args: ['/d', '/s', '/c', `chcp 65001>nul & ${command}`] };
+  }
+
+  if (shellBase.includes('powershell') || shellBase === 'pwsh.exe') {
+    return { executable: shell, args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command] };
+  }
+
+  if (shellBase.includes('bash') || shellBase === 'sh.exe') {
+    const wrapped = ['set +e', command, 'ec=$?', 'exit $ec'].join('\n');
+    return { executable: shell, args: ['-lc', wrapped] };
+  }
+
+  return { executable: shell, args: ['/d', '/s', '/c', command] };
+}
+
+function decodeShellOutput(buf: Buffer): string {
+  if (process.platform !== 'win32') {
+    return buf.toString('utf8');
+  }
+
+  const utf8 = buf.toString('utf8');
+  if (!utf8.includes('\uFFFD')) {
+    return utf8;
+  }
+
+  try {
+    const decoder = new TextDecoder('gbk');
+    return decoder.decode(buf);
+  } catch {
+    return utf8;
   }
 }
 

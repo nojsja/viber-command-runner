@@ -51,6 +51,16 @@ export interface OperatorProfile {
   lastSeenAt: string;
 }
 
+export interface TaskSessionView {
+  recordId: string;
+  commandKey: string;
+  label: string;
+  status: ReleaseStatus;
+  startedAt: string;
+  finishedAt?: string;
+  exitCode?: number;
+}
+
 export interface ReleaseHistoryBundle {
   version: 1;
   updatedAt: string;
@@ -65,16 +75,20 @@ export type PanelMessage =
   | { type: 'pasteAdhocCommand' }
   | { type: 'runRawCommand'; command: string }
   | { type: 'addCustomCommand'; label: string; command: string }
+  | { type: 'updateCustomCommand'; customId: string; label: string; command: string }
   | { type: 'removeCustomCommand'; customId: string }
   | { type: 'setGroupFold'; groupId: string; open: boolean }
+  | { type: 'setParallelMode'; enabled: boolean }
   | { type: 'setTerminalFold'; target: 'sticky' | 'panel'; expanded: boolean }
   | { type: 'refresh' }
   | { type: 'syncOss' }
   | { type: 'openSettings' }
   | { type: 'openTerminal' }
   | { type: 'clearTerminal' }
-  | { type: 'cancelRun' }
-  | { type: 'terminalInput'; value: string }
+  | { type: 'cancelRun'; recordId?: string }
+  | { type: 'terminalInput'; value: string; recordId?: string }
+  | { type: 'exportConfig' }
+  | { type: 'importConfig' }
   | { type: 'filter'; query: string };
 
 export type InteractiveShortcut = {
@@ -86,10 +100,10 @@ export type ExtensionMessage =
   | { type: 'state'; payload: PanelState }
   | { type: 'loading'; active: boolean; messageKey?: 'loading.initial' | 'loading.refresh' | 'loading.sync' }
   | { type: 'toast'; level: 'info' | 'warn' | 'error'; message: string }
-  | { type: 'runStarted'; recordId: string; label: string }
+  | { type: 'runStarted'; recordId: string; label: string; commandKey?: string }
   | { type: 'terminalClear' }
-  | { type: 'terminalOutput'; chunk: string; stream: 'stdout' | 'stderr' }
-  | { type: 'interactivePrompt'; prompt: string; context: string; shortcuts: InteractiveShortcut[] }
+  | { type: 'terminalOutput'; chunk: string; stream: 'stdout' | 'stderr'; recordId?: string }
+  | { type: 'interactivePrompt'; prompt: string; context: string; shortcuts: InteractiveShortcut[]; recordId?: string }
   | { type: 'interactivePromptDismiss' }
   | { type: 'adhocClipboardText'; text: string };
 
@@ -107,6 +121,9 @@ export interface PanelState {
   ossSyncedAt?: string;
   syncing: boolean;
   runningRecordId?: string;
+  runningRecordIds: string[];
+  parallelMode: boolean;
+  taskSessions: TaskSessionView[];
   workspaceName: string;
   uiLanguage: 'en' | 'zh';
   terminalFold: {

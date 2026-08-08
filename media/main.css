@@ -454,6 +454,155 @@ button.hidden {
   min-width: 0;
 }
 
+.commands-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.commands-panel-head h2 {
+  margin-right: auto;
+}
+
+.parallel-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.parallel-toggle-label {
+  line-height: 1;
+}
+
+.parallel-switch-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.parallel-switch-slider {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.35);
+  border: 1px solid var(--border);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.parallel-switch-slider::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  transition: transform 0.2s ease;
+}
+
+.parallel-switch-input:checked + .parallel-switch-slider {
+  background: var(--accent, #58a6ff);
+  border-color: transparent;
+}
+
+.parallel-switch-input:checked + .parallel-switch-slider::before {
+  transform: translateX(16px);
+}
+
+.parallel-switch-input:focus-visible + .parallel-switch-slider {
+  outline: 1px solid var(--accent, #58a6ff);
+  outline-offset: 2px;
+}
+
+.parallel-switch-input:disabled + .parallel-switch-slider {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.parallel-toggle:has(.parallel-switch-input:disabled) {
+  cursor: not-allowed;
+}
+
+.command-task-terminals {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.command-task-terminal {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(127, 127, 127, 0.04);
+}
+
+.command-task-terminal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.command-task-terminal:not(.terminal-collapsed) .command-task-terminal-head {
+  margin-bottom: 0;
+}
+
+.command-task-terminal.terminal-collapsed .command-task-terminal-head {
+  border-bottom: none;
+}
+
+.command-task-terminal-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.command-task-terminal.terminal-collapsed .terminal-fold-preview {
+  display: block;
+}
+
+.command-task-terminal.terminal-collapsed .command-task-terminal-body {
+  display: none;
+}
+
+.command-task-terminal:not(.terminal-collapsed) .terminal-fold-chevron::before {
+  transform: rotate(90deg);
+}
+
+.command-task-output {
+  margin: 0;
+  max-height: 220px;
+  min-height: 72px;
+  overflow: auto;
+  border: none;
+  border-radius: 0;
+}
+
+.task-stop-btn {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
 body.window-mode .commands-panel {
   display: flex;
   flex-direction: column;
@@ -569,6 +718,42 @@ body.window-mode .commands-panel > .adhoc-runner {
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) auto;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.custom-add-form.custom-edit-form {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) auto;
+  grid-template-areas:
+    'hint hint hint'
+    'label command actions';
+  border: 1px solid rgba(88, 166, 255, 0.35);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(88, 166, 255, 0.06);
+}
+
+.custom-edit-hint {
+  grid-area: hint;
+  font-size: 11px;
+  color: var(--accent, #58a6ff);
+  margin-bottom: 2px;
+}
+
+.custom-add-form.custom-edit-form #custom-label {
+  grid-area: label;
+}
+
+.custom-add-form.custom-edit-form #custom-command {
+  grid-area: command;
+}
+
+.custom-add-form.custom-edit-form .custom-form-actions {
+  grid-area: actions;
+}
+
+.custom-form-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .custom-add-form input {
@@ -948,6 +1133,42 @@ body.window-mode .terminal-output {
   .meta-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: 1100;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  color: var(--fg);
+  font-size: 12px;
+  line-height: 1.45;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.app-toast.hidden {
+  display: none;
+}
+
+.app-toast.toast-info {
+  border-color: rgba(88, 166, 255, 0.45);
+}
+
+.app-toast.toast-warn {
+  border-color: rgba(210, 153, 34, 0.55);
+  color: #e3b341;
+}
+
+.app-toast.toast-error {
+  border-color: rgba(248, 81, 73, 0.55);
+  color: #f85149;
 }
 
 .global-loading {

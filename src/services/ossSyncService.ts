@@ -1,11 +1,51 @@
-import OSS from 'ali-oss';
 import * as vscode from 'vscode';
+import { showUserNotification } from '../config';
 import { t } from '../i18n';
 import { ReleaseHistoryBundle } from '../types';
 import { ReleaseHistoryStore } from './releaseHistoryStore';
 
 const ACCESS_KEY_ID = 'viberCommandRunner.oss.accessKeyId';
 const ACCESS_KEY_SECRET = 'viberCommandRunner.oss.accessKeySecret';
+
+export interface OssCredentials {
+  accessKeyId?: string;
+  accessKeySecret?: string;
+}
+
+export async function readOssCredentials(secrets: vscode.SecretStorage): Promise<OssCredentials> {
+  const accessKeyId = await secrets.get(ACCESS_KEY_ID);
+  const accessKeySecret = await secrets.get(ACCESS_KEY_SECRET);
+  return {
+    accessKeyId: accessKeyId || undefined,
+    accessKeySecret: accessKeySecret || undefined,
+  };
+}
+
+export async function writeOssCredentials(secrets: vscode.SecretStorage, credentials: OssCredentials): Promise<void> {
+  if (credentials.accessKeyId !== undefined) {
+    if (credentials.accessKeyId) {
+      await secrets.store(ACCESS_KEY_ID, credentials.accessKeyId);
+    } else {
+      await secrets.delete(ACCESS_KEY_ID);
+    }
+  }
+  if (credentials.accessKeySecret !== undefined) {
+    if (credentials.accessKeySecret) {
+      await secrets.store(ACCESS_KEY_SECRET, credentials.accessKeySecret);
+    } else {
+      await secrets.delete(ACCESS_KEY_SECRET);
+    }
+  }
+}
+
+type OssClient = {
+  get(objectKey: string): Promise<{ content: Buffer }>;
+  put(objectKey: string, body: Buffer, options?: { headers?: Record<string, string> }): Promise<unknown>;
+};
+
+export interface OssSyncOptions {
+  interactive?: boolean;
+}
 
 export class OssSyncService {
   constructor(
@@ -17,12 +57,15 @@ export class OssSyncService {
     return vscode.workspace.getConfiguration('viberCommandRunner', this.folder.uri).get<boolean>('oss.enabled') ?? false;
   }
 
-  async syncFromRemote(store: ReleaseHistoryStore): Promise<{ bundle: ReleaseHistoryBundle; syncedAt: string } | undefined> {
+  async syncFromRemote(
+    store: ReleaseHistoryStore,
+    options: OssSyncOptions = {},
+  ): Promise<{ bundle: ReleaseHistoryBundle; syncedAt: string } | undefined> {
     if (!this.isEnabled()) {
       return undefined;
     }
 
-    const client = await this.createClient();
+    const client = await this.createClient(options);
     if (!client) {
       return undefined;
     }
@@ -45,12 +88,12 @@ export class OssSyncService {
     }
   }
 
-  async syncToRemote(store: ReleaseHistoryStore): Promise<string | undefined> {
+  async syncToRemote(store: ReleaseHistoryStore, options: OssSyncOptions = {}): Promise<string | undefined> {
     if (!this.isEnabled()) {
       return undefined;
     }
 
-    const client = await this.createClient();
+    const client = await this.createClient(options);
     if (!client) {
       return undefined;
     }
@@ -105,25 +148,35 @@ export class OssSyncService {
     );
   }
 
-  private async createClient(): Promise<OSS | undefined> {
+  private async createClient(options: OssSyncOptions = {}): Promise<OssClient | undefined> {
+    const interactive = options.interactive ?? false;
     const config = vscode.workspace.getConfiguration('viberCommandRunner', this.folder.uri);
     const bucket = config.get<string>('oss.bucket')?.trim();
     const region = config.get<string>('oss.region')?.trim() ?? 'oss-cn-beijing';
     const endpoint = config.get<string>('oss.endpoint')?.trim();
 
     if (!bucket) {
-      vscode.window.showWarningMessage(t('oss.configureBucket'));
+      if (interactive) {
+        showUserNotification('warn', t('oss.configureBucket'));
+      }
       return undefined;
     }
 
-    const ok = await this.ensureCredentialsPrompt();
-    if (!ok) {
-      return undefined;
+    if (interactive) {
+      const ok = await this.ensureCredentialsPrompt();
+      if (!ok) {
+        return undefined;
+      }
     }
 
     const accessKeyId = await this.secrets.get(ACCESS_KEY_ID);
     const accessKeySecret = await this.secrets.get(ACCESS_KEY_SECRET);
     if (!accessKeyId || !accessKeySecret) {
+      return undefined;
+    }
+
+    const OSS = await this.loadOssClient(interactive);
+    if (!OSS) {
       return undefined;
     }
 
@@ -135,5 +188,18 @@ export class OssSyncService {
       endpoint: endpoint || undefined,
       secure: true,
     });
+  }
+
+  private async loadOssClient(interactive: boolean): Promise<(new (options: Record<string, unknown>) => OssClient) | undefined> {
+    try {
+      const module = await import('ali-oss');
+      return module.default as unknown as new (options: Record<string, unknown>) => OssClient;
+    } catch (error) {
+      if (interactive) {
+        const message = error instanceof Error ? error.message : String(error);
+        showUserNotification('error', `Viber Command Runner: failed to load ali-oss (${message})`);
+      }
+      return undefined;
+    }
   }
 }

@@ -23,7 +23,7 @@
         {
           "id": "viberCommandRunner",
           "title": "Command Runner",
-          "icon": "media/rocket.svg"
+          "icon": "media/terminal.svg"
         }
       ]
     },
@@ -139,6 +139,11 @@
             "中文界面"
           ],
           "description": "Command console UI language / 操作台界面语言"
+        },
+        "viberCommandRunner.silentNotifications": {
+          "type": "boolean",
+          "default": false,
+          "description": "Suppress VS Code native notification sounds/toasts (e.g. OSS setup prompts). Panel inline toasts are always shown. / 静默 VS Code 系统通知（含音效）；面板内提示仍会显示"
         }
       }
     }
@@ -146,7 +151,7 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "npm run compile && vsce package --no-dependencies",
+    "package": "npm run compile && vsce package",
     "lint": "tsc -p ./ --noEmit"
   },
   "devDependencies": {

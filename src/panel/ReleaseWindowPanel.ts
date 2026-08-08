@@ -26,14 +26,14 @@ export class ReleaseWindowPanel {
     this.controller.onTerminalClear = () => {
       postExtensionMessage(this.panel.webview, { type: 'terminalClear' });
     };
-    this.controller.onTerminalOutput = (chunk, stream) => {
-      postExtensionMessage(this.panel.webview, { type: 'terminalOutput', chunk, stream });
+    this.controller.onTerminalOutput = (chunk, stream, recordId) => {
+      postExtensionMessage(this.panel.webview, { type: 'terminalOutput', chunk, stream, recordId });
     };
-    this.controller.onTerminalStarted = (label) => {
-      postExtensionMessage(this.panel.webview, { type: 'runStarted', recordId: '', label });
+    this.controller.onTerminalStarted = (label, recordId, commandKey) => {
+      postExtensionMessage(this.panel.webview, { type: 'runStarted', recordId, label, commandKey });
     };
-    this.controller.onInteractivePrompt = (prompt, context, shortcuts) => {
-      postExtensionMessage(this.panel.webview, { type: 'interactivePrompt', prompt, context, shortcuts });
+    this.controller.onInteractivePrompt = (prompt, context, shortcuts, recordId) => {
+      postExtensionMessage(this.panel.webview, { type: 'interactivePrompt', prompt, context, shortcuts, recordId });
     };
     this.controller.onInteractivePromptDismiss = () => {
       postExtensionMessage(this.panel.webview, { type: 'interactivePromptDismiss' });
@@ -57,7 +57,6 @@ export class ReleaseWindowPanel {
   public static createOrShow(extensionUri: vscode.Uri, secrets: vscode.SecretStorage): void {
     if (ReleaseWindowPanel.currentPanel) {
       ReleaseWindowPanel.currentPanel.panel.reveal(vscode.ViewColumn.Active, false);
-      void ReleaseWindowPanel.currentPanel.loadAndPostState('refresh');
       return;
     }
 
@@ -109,12 +108,22 @@ export class ReleaseWindowPanel {
         void this.controller.addCustomCommand(message.label, message.command);
         break;
       }
+      case 'updateCustomCommand': {
+        void this.controller.updateCustomCommand(message.customId, message.label, message.command);
+        break;
+      }
       case 'removeCustomCommand': {
         void this.controller.removeCustomCommand(message.customId);
         break;
       }
       case 'setGroupFold': {
         void this.controller.setGroupFold(message.groupId, message.open);
+        break;
+      }
+      case 'setParallelMode': {
+        void this.controller.setParallelMode(message.enabled).then((state) => {
+          postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
+        });
         break;
       }
       case 'setTerminalFold': {
@@ -129,6 +138,12 @@ export class ReleaseWindowPanel {
       case 'openSettings':
         await vscode.commands.executeCommand('workbench.action.openSettings', 'viberCommandRunner');
         break;
+      case 'exportConfig':
+        void this.controller.exportConfig();
+        break;
+      case 'importConfig':
+        void this.controller.importConfig();
+        break;
       case 'openTerminal':
         this.controller.openTerminal();
         break;
@@ -136,11 +151,11 @@ export class ReleaseWindowPanel {
         postExtensionMessage(this.panel.webview, { type: 'terminalClear' });
         break;
       case 'cancelRun': {
-        void this.controller.cancelRun();
+        void this.controller.cancelRun(message.recordId);
         break;
       }
       case 'terminalInput': {
-        this.controller.submitTerminalInput(message.value);
+        this.controller.submitTerminalInput(message.value, message.recordId);
         break;
       }
       default:
@@ -179,7 +194,7 @@ export class ReleaseWindowPanel {
   }
 
   private async backgroundSyncOss(): Promise<void> {
-    const state = await this.controller.syncOss(false);
+    const state = await this.controller.syncOss({ quiet: true, interactive: false });
     postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
   }
 
@@ -196,7 +211,7 @@ export class ReleaseWindowPanel {
 <html lang="${htmlLang}">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src ${webview.cspSource} 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="${styleUri}" />
   <title>Viber Command Runner Panel</title>
@@ -214,6 +229,8 @@ export class ReleaseWindowPanel {
         <button id="btn-terminal" class="ghost" data-i18n="btn.externalTerminal">External Terminal</button>
         <button id="btn-sync" class="ghost" data-i18n="btn.syncOss">Sync OSS</button>
         <button id="btn-refresh" class="ghost" data-i18n="btn.refresh">Refresh</button>
+        <button id="btn-import-config" class="ghost" data-i18n="btn.importConfig" data-i18n-title="btn.importConfigTitle" title="Import panel configuration from JSON">Import</button>
+        <button id="btn-export-config" class="ghost" data-i18n="btn.exportConfig" data-i18n-title="btn.exportConfigTitle" title="Export panel configuration to JSON">Export</button>
         <button id="btn-settings" class="ghost" data-i18n="btn.settings">Settings</button>
       </div>
     </header>
@@ -242,17 +259,23 @@ export class ReleaseWindowPanel {
 
     <div class="content-grid">
       <section class="panel commands-panel">
-        <div class="panel-head">
+        <div class="panel-head commands-panel-head">
           <h2 data-i18n="commands.title">Commands</h2>
+          <label class="parallel-toggle" data-i18n-title="parallelMode.title" title="Run multiple commands in parallel with per-command terminals">
+            <span class="parallel-toggle-label" data-i18n="parallelMode.label">Parallel</span>
+            <input id="parallel-mode-toggle" class="parallel-switch-input" type="checkbox" role="switch" />
+            <span class="parallel-switch-slider" aria-hidden="true"></span>
+          </label>
           <input id="command-filter" type="search" data-i18n-placeholder="commands.filterPlaceholder" placeholder="Filter Android / iOS / Shorebird..." />
         </div>
         <div class="adhoc-runner panel">
-          <div class="adhoc-head" data-i18n="adhoc.title">Ad-hoc Command</div>
+          <div class="adhoc-head" data-i18n="adhoc.title">Instant Command</div>
           <div class="adhoc-row">
             <input id="adhoc-command" type="text" data-i18n-placeholder="adhoc.placeholder" placeholder="bash scripts/..." spellcheck="false" data-i18n-title="adhoc.inputTitle" title="Enter a shell command to run immediately" />
             <button id="adhoc-paste" type="button" class="ghost" data-i18n="btn.paste" data-i18n-title="adhoc.pasteTitle" title="Paste from clipboard">Paste</button>
             <button id="adhoc-run" type="button" data-i18n="btn.execute" data-i18n-title="adhoc.runTitle" title="Run command">Execute</button>
           </div>
+          <div id="adhoc-task-terminals" class="command-task-terminals"></div>
         </div>
         <div id="command-groups-scroll" class="command-groups-scroll">
           <div id="command-groups" class="command-groups"></div>
@@ -319,7 +342,9 @@ export class ReleaseWindowPanel {
     </div>
   </div>
 
-  <div id="global-loading" class="global-loading" aria-live="polite" aria-busy="true">
+  <div id="app-toast" class="app-toast hidden" role="status" aria-live="polite"></div>
+
+  <div id="global-loading" class="global-loading hidden" aria-live="polite" aria-busy="false">
     <div class="global-loading-card">
       <span class="global-loading-spinner" aria-hidden="true"></span>
       <span id="global-loading-text" data-i18n="loading.initial">Loading command console...</span>

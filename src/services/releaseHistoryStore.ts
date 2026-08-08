@@ -105,7 +105,14 @@ export class ReleaseHistoryStore {
     return crypto.randomUUID();
   }
 
-  async reconcileStaleRunningRecords(activeRecordId?: string): Promise<boolean> {
+  async reconcileStaleRunningRecords(activeRecordIds?: string | string[]): Promise<boolean> {
+    const activeIds = new Set(
+      activeRecordIds === undefined
+        ? []
+        : Array.isArray(activeRecordIds)
+          ? activeRecordIds
+          : [activeRecordIds],
+    );
     const bundle = await this.load();
     let changed = false;
     const now = new Date().toISOString();
@@ -113,7 +120,7 @@ export class ReleaseHistoryStore {
       if (record.status !== 'running') {
         continue;
       }
-      if (activeRecordId && record.id === activeRecordId) {
+      if (activeIds.has(record.id)) {
         continue;
       }
       record.status = 'cancelled';

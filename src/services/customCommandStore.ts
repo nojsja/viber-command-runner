@@ -54,6 +54,22 @@ export class CustomCommandStore {
     return true;
   }
 
+  async update(id: string, label: string, command: string): Promise<StoredCustomCommand | undefined> {
+    const bundle = await this.loadBundle();
+    const item = bundle.commands.find((entry) => entry.id === id);
+    if (!item) {
+      return undefined;
+    }
+    item.label = label.trim();
+    item.command = command.trim().replace(/;$/, '');
+    await this.save(bundle);
+    return item;
+  }
+
+  async replaceAll(commands: StoredCustomCommand[]): Promise<void> {
+    await this.save({ version: 1, commands });
+  }
+
   private async loadBundle(): Promise<CustomCommandFile> {
     if (this.bundle) {
       return this.bundle;
