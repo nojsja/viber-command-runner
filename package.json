@@ -1,10 +1,11 @@
 {
   "name": "viber-command-runner",
   "displayName": "Viber Command Runner",
-  "description": "VS Code 命令运行面板：一键执行 workspace 脚本、内置终端日志、命令历史与 OSS 同步",
+  "description": "Command panel for VS Code: run workspace scripts with built-in terminal logs, run history, and optional OSS sync.",
   "version": "0.1.0",
   "publisher": "nojsja",
   "license": "MIT",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/nojsja/viber-command-runner.git"

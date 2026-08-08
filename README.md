@@ -1,47 +1,51 @@
 # Viber Command Runner
 
-VS Code / Cursor 扩展：在侧边栏统一管理 workspace 构建与脚本命令。
+VS Code / Cursor extension for running workspace build and script commands from a dedicated command panel.
 
-## 功能
+## Features
 
-- 读取 workspace 的 `command-runner.commands`
-- 以**编辑器大窗口**打开命令面板（非窄侧边栏）
-- 命令面板：`Viber Command Runner: 打开命令面板`
-- 本地执行记录：时间、分支、平台、操作人、版本号
-- 可选 OSS 同步：打开面板时拉取 + 执行完成后上传
-- 自定义命令、即时命令、内置终端与交互式输入
+- Read commands from `command-runner.commands` or `viberCommandRunner.commands`
+- Open the **command panel** in a full editor tab (not a narrow sidebar)
+- Command: `Viber Command Runner: Open Command Panel`
+- Local run history: time, branch, platform, operator, version
+- Optional OSS sync: pull on panel open, push after each run
+- Custom commands, instant commands, embedded terminal, and interactive prompts
+- Parallel mode with per-command terminals
 
-## 开发
+## Development
 
 ```bash
-cd tools/viber-command-runner
 npm install
+cd webview && npm install && cd ..
 npm run compile
 ```
 
-在 VS Code / Cursor 中按 `F5` 启动 **Extension Development Host**，打开本项目工作区，点击左侧 **Command Runner** 图标。
-
-## 打包 VSIX
+Press `F5` in VS Code / Cursor to launch the **Extension Development Host**, open a workspace, and click the **Command Runner** activity bar icon.
 
 ```bash
-cd tools/viber-command-runner
-npm run package
-# 或
-bash scripts/package-vsix.sh
+npm run watch          # extension TypeScript
+npm run watch:webview  # webview UI
 ```
 
-安装：
+## Package VSIX
+
+```bash
+npm run package
+```
+
+Install:
 
 ```bash
 code --install-extension viber-command-runner-0.1.0.vsix
-# 或
+# or
 cursor --install-extension viber-command-runner-0.1.0.vsix
 ```
 
-## 配置示例
+## Configuration
 
 ```json
 {
+  "viberCommandRunner.uiLanguage": "en",
   "viberCommandRunner.oss.enabled": true,
   "viberCommandRunner.oss.region": "oss-cn-beijing",
   "viberCommandRunner.oss.bucket": "your-bucket",
@@ -49,7 +53,7 @@ cursor --install-extension viber-command-runner-0.1.0.vsix
 }
 ```
 
-操作人（可选）：
+Operator (optional):
 
 ```json
 {
@@ -57,9 +61,9 @@ cursor --install-extension viber-command-runner-0.1.0.vsix
 }
 ```
 
-## 本地数据
+## Local data
 
-执行记录保存在用户目录（按工作区区分），不会写入工程仓库：
+Run records are stored under the user home directory (per workspace), not in the repo:
 
 ```
 ~/.viber/command-runner/workspaces/<workspace-name-hash>/
@@ -68,4 +72,4 @@ cursor --install-extension viber-command-runner-0.1.0.vsix
   ui-state.json
 ```
 
-首次启动时会自动从工程内旧目录（`.goocean/release-panel` / `.viber/command-runner`）迁移数据。
+Legacy data under `.goocean/release-panel` or `.viber/command-runner` in the workspace is migrated on first launch.

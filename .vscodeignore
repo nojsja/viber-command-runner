@@ -1,9 +1,31 @@
 .vscode/**
 .vscode-test/**
 src/**
+webview/**
+.git/**
 .gitignore
+.github/**
+**/.github/**
 tsconfig.json
-**/*.map
 **/*.ts
+**/*.map
 scripts/**
+package-lock.json
+
+# Legacy vanilla webview (replaced by media/dist)
+media/main.js
+media/main.css
+media/i18n-runtime.js
+
+# Dev / docs noise inside dependencies
+node_modules/**/test/**
+node_modules/**/tests/**
+node_modules/**/__tests__/**
+node_modules/**/*.md
+node_modules/**/docs/**
+node_modules/**/.github/**
+node_modules/ali-oss/dist/**
+
 !out/**
+!README.md
+!LICENSE

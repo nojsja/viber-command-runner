@@ -99,27 +99,16 @@ export function CommandCard({ command }: CommandCardProps) {
         >
           <CopyIcon />
         </button>
-        {panelState.parallelMode ? (
-          <button
-            type="button"
-            class="run-btn icon-btn"
-            title={t('btn.runTitle')}
-            aria-label={t('btn.runTitle')}
-            disabled={disabled}
-            onClick={() => runCommand(command.key)}
-          >
-            <PlayIcon />
-          </button>
-        ) : (
-          <button
-            type="button"
-            title={t('btn.runTitle')}
-            disabled={disabled}
-            onClick={() => runCommand(command.key)}
-          >
-            {t('btn.run')}
-          </button>
-        )}
+        <button
+          type="button"
+          class="run-btn icon-btn"
+          title={t('btn.runTitle')}
+          aria-label={t('btn.runTitle')}
+          disabled={disabled}
+          onClick={() => runCommand(command.key)}
+        >
+          <PlayIcon />
+        </button>
       </div>
       {sessions.length > 0 ? (
         <div class="command-task-terminals">

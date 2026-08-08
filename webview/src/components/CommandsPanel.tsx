@@ -88,12 +88,12 @@ export function CommandsPanel() {
           <button
             type="button"
             id="adhoc-run"
-            class={parallelMode ? 'icon-btn run-btn' : undefined}
+            class="icon-btn run-btn"
             title={t('adhoc.runTitle')}
-            aria-label={parallelMode ? t('adhoc.runTitle') : undefined}
+            aria-label={t('adhoc.runTitle')}
             onClick={handleRunAdhoc}
           >
-            {parallelMode ? <PlayIcon /> : t('btn.execute')}
+            <PlayIcon />
           </button>
         </div>
         <div id="adhoc-task-terminals" class="command-task-terminals">
