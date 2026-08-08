@@ -1135,6 +1135,14 @@ body.window-mode .terminal-output {
   }
 }
 
+.input-dialog.confirm-dialog .confirm-message {
+  margin: 0 0 16px;
+  color: var(--vscode-descriptionForeground, #9da5b4);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
 .app-toast {
   position: fixed;
   left: 50%;

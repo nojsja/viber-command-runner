@@ -54,11 +54,17 @@
   const inputSubmit = document.getElementById('input-submit');
   const inputCancel = document.getElementById('input-cancel');
   const inputClose = document.getElementById('input-close');
+  const confirmOverlay = document.getElementById('confirm-overlay');
+  const confirmMessage = document.getElementById('confirm-message');
+  const confirmOk = document.getElementById('confirm-ok');
+  const confirmCancel = document.getElementById('confirm-cancel');
   const globalLoading = document.getElementById('global-loading');
   const globalLoadingText = document.getElementById('global-loading-text');
   const appToast = document.getElementById('app-toast');
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let toastTimer = undefined;
+  /** @type {((confirmed: boolean) => void) | undefined} */
+  let confirmResolver = undefined;
 
   /** @type {string} */
   let terminalBuffer = '';
@@ -87,6 +93,42 @@
       appToast.classList.add('hidden');
     }, 3200);
   }
+
+  function finishConfirm(confirmed) {
+    confirmOverlay?.classList.add('hidden');
+    confirmOverlay?.setAttribute('aria-hidden', 'true');
+    confirmResolver?.(confirmed);
+    confirmResolver = undefined;
+  }
+
+  function showConfirm(message, confirmLabel, cancelLabel) {
+    return new Promise((resolve) => {
+      confirmResolver = resolve;
+      if (confirmMessage) {
+        confirmMessage.textContent = message;
+      }
+      if (confirmOk) {
+        confirmOk.textContent = confirmLabel || t('btn.confirm');
+      }
+      if (confirmCancel) {
+        confirmCancel.textContent = cancelLabel || t('btn.cancel');
+      }
+      confirmOverlay?.classList.remove('hidden');
+      confirmOverlay?.setAttribute('aria-hidden', 'false');
+    });
+  }
+
+  confirmOk?.addEventListener('click', () => {
+    finishConfirm(true);
+  });
+  confirmCancel?.addEventListener('click', () => {
+    finishConfirm(false);
+  });
+  confirmOverlay?.addEventListener('click', (event) => {
+    if (event.target === confirmOverlay) {
+      finishConfirm(false);
+    }
+  });
 
   btnStickyHide?.addEventListener('click', () => {
     stickyTerminalHidden = true;
@@ -271,6 +313,12 @@
     }
     if (message.type === 'interactivePromptDismiss') {
       hideInteractivePrompt();
+      return;
+    }
+    if (message.type === 'confirmRequest') {
+      void showConfirm(message.message, message.confirmLabel, message.cancelLabel).then((confirmed) => {
+        vscode.postMessage({ type: 'confirmResponse', confirmed });
+      });
       return;
     }
     if (message.type === 'adhocClipboardText') {
@@ -543,9 +591,19 @@
     commandGroupsRoot?.querySelectorAll('[data-remove-custom]').forEach((button) => {
       button.addEventListener('click', () => {
         const customId = button.getAttribute('data-remove-custom');
-        if (customId) {
-          vscode.postMessage({ type: 'removeCustomCommand', customId });
+        const label = button.getAttribute('data-remove-label') || '';
+        if (!customId) {
+          return;
         }
+        void showConfirm(
+          t('custom.deleteConfirm', { label }),
+          t('btn.remove'),
+          t('btn.cancel'),
+        ).then((confirmed) => {
+          if (confirmed) {
+            vscode.postMessage({ type: 'removeCustomCommand', customId });
+          }
+        });
       });
     });
 
@@ -1040,7 +1098,7 @@
     const taskTerminals = sessions.map(renderTaskTerminal).join('');
     const removeButton = command.customId
       ? `<button type="button" class="ghost edit-btn" title="${escapeHtmlAttr(t('btn.editTitle'))}" ${disabled ? 'disabled' : ''} data-edit-custom="${escapeHtmlAttr(command.customId)}">${escapeHtml(t('btn.edit'))}</button>
-         <button type="button" class="ghost remove-btn" title="${escapeHtmlAttr(t('btn.removeTitle'))}" ${disabled ? 'disabled' : ''} data-remove-custom="${escapeHtmlAttr(command.customId)}">${escapeHtml(t('btn.remove'))}</button>`
+         <button type="button" class="ghost remove-btn" title="${escapeHtmlAttr(t('btn.removeTitle'))}" ${disabled ? 'disabled' : ''} data-remove-custom="${escapeHtmlAttr(command.customId)}" data-remove-label="${escapeHtmlAttr(command.label)}">${escapeHtml(t('btn.remove'))}</button>`
       : '';
     return `
       <article class="command-card" title="${tip}">

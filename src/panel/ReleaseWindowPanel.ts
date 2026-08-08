@@ -342,7 +342,20 @@ export class ReleaseWindowPanel {
     </div>
   </div>
 
-  <div id="app-toast" class="app-toast hidden" role="status" aria-live="polite"></div>
+  <div id="confirm-overlay" class="input-overlay hidden" aria-hidden="true">
+    <div class="input-dialog confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
+      <div class="input-dialog-head">
+        <h3 id="confirm-dialog-title" data-i18n="confirm.title">Confirm</h3>
+      </div>
+      <p id="confirm-message" class="confirm-message"></p>
+      <div class="input-actions">
+        <button id="confirm-ok" type="button" data-i18n="btn.confirm">Confirm</button>
+        <button id="confirm-cancel" class="ghost" type="button" data-i18n="btn.cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="app-toast" class="app-toast hidden" role="status" aria-live="off"></div>
 
   <div id="global-loading" class="global-loading hidden" aria-live="polite" aria-busy="false">
     <div class="global-loading-card">
