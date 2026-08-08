@@ -15,6 +15,8 @@ import {
   readGitBranch,
   readPubspecVersion,
   ReleaseRunner,
+  PanelShellSession,
+  openExternalTerminalForFolder,
   resolveOperator,
 } from '../services/releaseRunner';
 import { ExtensionMessage, InteractiveShortcut, PanelState, ReleaseCommandDefinition, ReleaseRecord, ReleaseStatus, TaskSessionView } from '../types';
@@ -49,7 +51,7 @@ export class ReleasePanelController {
   private store: ReleaseHistoryStore | undefined;
   private customCommands: CustomCommandStore | undefined;
   private uiState: UiStateStore | undefined;
-  private runner: ReleaseRunner | undefined;
+  private panelShell: PanelShellSession | undefined;
   private oss: OssSyncService | undefined;
   private syncing = false;
   private runningRecordId: string | undefined;
@@ -69,7 +71,26 @@ export class ReleasePanelController {
     }
     this.parallelTasks.clear();
     this.taskSessions = [];
-    this.runner?.dispose();
+    this.panelShell?.dispose();
+  }
+
+  private async ensurePanelShell(): Promise<void> {
+    if (this.parallelMode) {
+      return;
+    }
+    const folder = this.ensureWorkspaceServices();
+    if (!folder || !this.panelShell) {
+      return;
+    }
+    await this.panelShell.ensureStarted((chunk, stream) => {
+      this.onTerminalOutput?.(chunk, stream);
+      if (this.runningRecordId) {
+        const detected = this.promptDetector.append(chunk);
+        if (detected) {
+          this.onInteractivePrompt?.(detected.prompt, detected.context, buildInteractiveShortcuts(detected.prompt));
+        }
+      }
+    });
   }
 
   async refresh(): Promise<PanelState> {
@@ -129,6 +150,9 @@ export class ReleasePanelController {
       await this.store!.load();
     }
     await this.reconcileRunningRecords();
+    if (!this.parallelMode) {
+      await this.ensurePanelShell();
+    }
     return this.buildState();
   }
 
@@ -165,7 +189,7 @@ export class ReleasePanelController {
     }
 
     this.onTerminalOutput?.(t('terminal.userCancelled'), 'stderr');
-    this.runner?.cancel();
+    this.panelShell?.cancel();
     this.onInteractivePromptDismiss?.();
 
     await this.store.upsertRecord({
@@ -182,32 +206,40 @@ export class ReleasePanelController {
     return state;
   }
 
-  submitTerminalInput(value: string, recordId?: string): void {
+  async submitTerminalInput(value: string, recordId?: string): Promise<PanelState | undefined> {
     if (this.parallelMode) {
       const targetId = recordId ?? this.interactiveRecordId;
+      const trimmed = value.trim();
       const task = targetId ? this.parallelTasks.get(targetId) : undefined;
-      if (!task?.runner.isRunning()) {
-        return;
+      if (task?.runner.isRunning()) {
+        const display = value === '' ? '(Enter)' : value;
+        this.onTerminalOutput?.(`> ${display}\n`, 'stdout', targetId);
+        task.runner.writeStdin(value);
+        task.promptDetector.markResponded();
+        if (this.interactiveRecordId === targetId) {
+          this.interactiveRecordId = undefined;
+          this.onInteractivePromptDismiss?.();
+        }
+        return undefined;
       }
-      const display = value === '' ? '(Enter)' : value;
-      this.onTerminalOutput?.(`> ${display}\n`, 'stdout', targetId);
-      task.runner.writeStdin(value);
-      task.promptDetector.markResponded();
-      if (this.interactiveRecordId === targetId) {
-        this.interactiveRecordId = undefined;
-        this.onInteractivePromptDismiss?.();
+      if (targetId && trimmed && this.taskSessions.some((item) => item.recordId === targetId)) {
+        return this.runCommandInTaskTerminal(targetId, trimmed);
       }
-      return;
+      if (!trimmed) {
+        return undefined;
+      }
+      return this.runRawCommand(trimmed);
     }
 
-    if (!this.runner?.isRunning()) {
-      return;
+    await this.ensurePanelShell();
+    if (!this.panelShell) {
+      return undefined;
     }
-    const display = value === '' ? '(Enter)' : value;
-    this.onTerminalOutput?.(`> ${display}\n`, 'stdout');
-    this.runner.writeStdin(value);
+
+    this.panelShell.writeStdin(value);
     this.promptDetector.markResponded();
     this.onInteractivePromptDismiss?.();
+    return undefined;
   }
 
   async runCommand(commandKey: string): Promise<PanelState> {
@@ -305,7 +337,7 @@ export class ReleasePanelController {
     if (enabled === this.parallelMode) {
       return this.buildState();
     }
-    if (enabled && (this.runningRecordId || this.runner?.isRunning())) {
+    if (enabled && (this.runningRecordId || this.panelShell?.isRunning())) {
       this.notify('warn', t('toast.runInProgress'));
       return this.buildState();
     }
@@ -352,7 +384,7 @@ export class ReleasePanelController {
       return this.buildEmptyState();
     }
 
-    if (this.runningRecordId || this.runner?.isRunning() || this.parallelTasks.size > 0) {
+    if (this.runningRecordId || this.panelShell?.isRunning() || this.parallelTasks.size > 0) {
       this.notify('warn', t('toast.runInProgress'));
       return this.buildState();
     }
@@ -397,7 +429,7 @@ export class ReleasePanelController {
 
   private async executeDefinition(definition: ReleaseCommandDefinition): Promise<PanelState> {
     const folder = this.ensureWorkspaceServices();
-    if (!folder || !this.store || !this.runner || !this.oss) {
+    if (!folder || !this.store || !this.panelShell || !this.oss) {
       this.notify('warn', t('toast.openWorkspace'));
       return this.buildEmptyState();
     }
@@ -405,7 +437,7 @@ export class ReleasePanelController {
       void this.startParallelTask(definition);
       return this.buildState();
     }
-    if (this.runningRecordId || this.runner?.isRunning()) {
+    if (this.runningRecordId || this.panelShell.isRunning()) {
       this.notify('warn', t('toast.runInProgress'));
       return this.buildState();
     }
@@ -440,12 +472,11 @@ export class ReleasePanelController {
     this.runningRecordId = recordId;
     this.promptDetector.reset();
     this.onInteractivePromptDismiss?.();
-    this.onTerminalClear?.();
     this.onTerminalStarted?.(definition.label, recordId, definition.key);
     await this.onStateChanged?.(await this.buildState());
 
     try {
-      await this.runner.run(
+      await this.panelShell.run(
         definition,
         recordId,
         (chunk, stream) => {
@@ -475,18 +506,107 @@ export class ReleasePanelController {
   }
 
   openTerminal(): void {
-    this.runner?.openExternalTerminal();
+    const folder = this.ensureWorkspaceServices();
+    if (folder) {
+      openExternalTerminalForFolder(folder);
+    }
   }
 
   onStateChanged: ((state: PanelState) => void) | undefined;
   onToast: ((level: 'info' | 'warn' | 'error', message: string) => void) | undefined;
-  onTerminalClear: (() => void) | undefined;
+  onTerminalClear: ((recordId?: string) => void) | undefined;
   onTerminalOutput: ((chunk: string, stream: 'stdout' | 'stderr', recordId?: string) => void) | undefined;
   onTerminalStarted: ((label: string, recordId: string, commandKey: string) => void) | undefined;
   onInteractivePrompt:
     | ((prompt: string, context: string, shortcuts: InteractiveShortcut[], recordId?: string) => void)
     | undefined;
   onInteractivePromptDismiss: (() => void) | undefined;
+
+  private async runCommandInTaskTerminal(recordId: string, command: string): Promise<PanelState> {
+    const folder = this.ensureWorkspaceServices();
+    if (!folder || !this.store) {
+      this.notify('warn', t('toast.openWorkspace'));
+      return this.buildEmptyState();
+    }
+
+    const session = this.taskSessions.find((item) => item.recordId === recordId);
+    if (!session || this.parallelTasks.has(recordId)) {
+      return this.buildState();
+    }
+
+    const bundle = await this.store.load();
+    const existingRecord = bundle.records.find((item) => item.id === recordId);
+    if (!existingRecord) {
+      return this.runRawCommand(command);
+    }
+
+    session.status = 'running';
+    session.finishedAt = undefined;
+    session.exitCode = undefined;
+
+    const runner = new ReleaseRunner(folder);
+    const promptDetector = new InteractivePromptDetector();
+    this.parallelTasks.set(recordId, { record: existingRecord, runner, promptDetector });
+    await this.onStateChanged?.(await this.buildState());
+
+    void runner
+      .runFollowUp(command, recordId, (chunk, stream) => {
+        this.onTerminalOutput?.(chunk, stream, recordId);
+        const detected = promptDetector.append(chunk);
+        if (detected) {
+          this.interactiveRecordId = recordId;
+          this.onInteractivePrompt?.(
+            detected.prompt,
+            detected.context,
+            buildInteractiveShortcuts(detected.prompt),
+            recordId,
+          );
+        }
+      }, async (result) => {
+        await this.finishTaskTerminalFollowUp(recordId, resolveRunStatus(result));
+      })
+      .catch(async (error) => {
+        this.parallelTasks.delete(recordId);
+        const message = error instanceof Error ? error.message : String(error);
+        this.updateTaskSession(recordId, 'failed', 1);
+        this.notify('error', message);
+        await this.onStateChanged?.(await this.buildState());
+      });
+
+    return this.buildState();
+  }
+
+  private async finishTaskTerminalFollowUp(
+    recordId: string,
+    status: { status: ReleaseStatus; exitCode: number },
+  ): Promise<void> {
+    this.parallelTasks.delete(recordId);
+    if (this.interactiveRecordId === recordId) {
+      this.interactiveRecordId = undefined;
+      this.onInteractivePromptDismiss?.();
+    }
+    this.updateTaskSession(recordId, status.status, status.exitCode);
+    await this.onStateChanged?.(await this.buildState());
+  }
+
+  private getTaskSessionSlotKey(commandKey: string): string {
+    return commandKey.startsWith('adhoc:') ? 'adhoc' : commandKey;
+  }
+
+  private findTaskSessionBySlot(commandKey: string): TaskSessionView | undefined {
+    const slotKey = this.getTaskSessionSlotKey(commandKey);
+    return this.taskSessions.find((item) => this.getTaskSessionSlotKey(item.commandKey) === slotKey);
+  }
+
+  private pruneTaskSessionsForSlot(commandKey: string, keepRecordId: string): void {
+    const slotKey = this.getTaskSessionSlotKey(commandKey);
+    this.taskSessions = this.taskSessions.filter((item) => {
+      if (this.getTaskSessionSlotKey(item.commandKey) !== slotKey) {
+        return true;
+      }
+      return item.recordId === keepRecordId;
+    });
+  }
 
   private async startParallelTask(definition: ReleaseCommandDefinition): Promise<void> {
     const folder = this.ensureWorkspaceServices();
@@ -495,10 +615,17 @@ export class ReleasePanelController {
       return;
     }
 
+    const existing = this.findTaskSessionBySlot(definition.key);
+    if (existing && this.parallelTasks.has(existing.recordId)) {
+      this.notify('warn', t('toast.runInProgress'));
+      return;
+    }
+
     const operator = await resolveOperator(folder, this.secrets);
     const branch = await readGitBranch(folder);
     const version = await readPubspecVersion(folder);
-    const recordId = this.store.createRecordId();
+    const startedAt = new Date().toISOString();
+    const recordId = existing?.recordId ?? this.store.createRecordId();
     const record: ReleaseRecord = {
       id: recordId,
       commandKey: definition.key,
@@ -514,7 +641,7 @@ export class ReleasePanelController {
       appBuild: version.build,
       workspaceName: folder.name,
       workspacePath: folder.uri.fsPath,
-      startedAt: new Date().toISOString(),
+      startedAt,
       status: 'running',
       logHint: t('logHint.panelTerminal'),
     };
@@ -522,14 +649,25 @@ export class ReleasePanelController {
     await this.store.upsertRecord(record);
     await this.store.touchOperator(buildOperatorProfile(operator.name, operator.email));
 
-    const session: TaskSessionView = {
-      recordId,
-      commandKey: definition.key,
-      label: definition.label,
-      status: 'running',
-      startedAt: record.startedAt,
-    };
-    this.taskSessions.push(session);
+    if (existing) {
+      existing.commandKey = definition.key;
+      existing.label = definition.label;
+      existing.status = 'running';
+      existing.startedAt = startedAt;
+      existing.finishedAt = undefined;
+      existing.exitCode = undefined;
+      this.pruneTaskSessionsForSlot(definition.key, recordId);
+      this.onTerminalClear?.(recordId);
+    } else {
+      const session: TaskSessionView = {
+        recordId,
+        commandKey: definition.key,
+        label: definition.label,
+        status: 'running',
+        startedAt,
+      };
+      this.taskSessions.push(session);
+    }
 
     const runner = new ReleaseRunner(folder);
     const promptDetector = new InteractivePromptDetector();
@@ -670,11 +808,11 @@ export class ReleasePanelController {
     }
     const activeRecordIds = this.parallelMode
       ? [...this.parallelTasks.keys()]
-      : this.runner?.isRunning() && this.runningRecordId
+      : this.panelShell?.isRunning() && this.runningRecordId
         ? [this.runningRecordId]
         : [];
     await this.store.reconcileStaleRunningRecords(activeRecordIds);
-    if (!this.parallelMode && !this.runner?.isRunning()) {
+    if (!this.parallelMode && !this.panelShell?.isRunning()) {
       this.runningRecordId = undefined;
     }
   }
@@ -752,12 +890,12 @@ export class ReleasePanelController {
       }
       this.parallelTasks.clear();
       this.taskSessions = [];
-      this.runner?.dispose();
+      this.panelShell?.dispose();
       this.folder = folder;
       this.store = new ReleaseHistoryStore(folder);
       this.customCommands = new CustomCommandStore(folder);
       this.uiState = new UiStateStore(folder);
-      this.runner = new ReleaseRunner(folder);
+      this.panelShell = new PanelShellSession(folder);
       this.oss = new OssSyncService(folder, this.secrets);
     }
     return folder;

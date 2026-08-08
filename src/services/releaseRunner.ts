@@ -63,11 +63,36 @@ export class ReleaseRunner {
     return true;
   }
 
+  async runFollowUp(
+    command: string,
+    recordId: string,
+    onOutput: (chunk: string, stream: 'stdout' | 'stderr') => void,
+    onFinished: (result: RunFinishedResult) => void,
+  ): Promise<RunFinishedResult> {
+    return this.spawnCommand(command, recordId, onOutput, onFinished, `$ ${command}\n`);
+  }
+
   async run(
     definition: ReleaseCommandDefinition,
     recordId: string,
     onOutput: (chunk: string, stream: 'stdout' | 'stderr') => void,
     onFinished: (result: RunFinishedResult) => void,
+  ): Promise<RunFinishedResult> {
+    return this.spawnCommand(
+      definition.command,
+      recordId,
+      onOutput,
+      onFinished,
+      `▶ ${definition.label}\n$ ${definition.command}\n`,
+    );
+  }
+
+  private async spawnCommand(
+    command: string,
+    recordId: string,
+    onOutput: (chunk: string, stream: 'stdout' | 'stderr') => void,
+    onFinished: (result: RunFinishedResult) => void,
+    preamble: string,
   ): Promise<RunFinishedResult> {
     if (this.activeRun) {
       throw new Error(t('runner.taskAlreadyRunning'));
@@ -75,11 +100,11 @@ export class ReleaseRunner {
 
     this.cancelRequested = false;
 
-    onOutput(`▶ ${definition.label}\n$ ${definition.command}\n`, 'stdout');
+    onOutput(preamble, 'stdout');
 
     const shell = resolveShellExecutable();
     const env = await resolveCommandEnvironment();
-    const { executable, args } = buildShellInvocation(shell, definition.command);
+    const { executable, args } = buildShellInvocation(shell, command);
 
     return await new Promise((resolve, reject) => {
       const useProcessGroup = process.platform !== 'win32';
@@ -130,15 +155,215 @@ export class ReleaseRunner {
   }
 
   openExternalTerminal(): void {
-    const terminalName =
-      vscode.workspace.getConfiguration('viberCommandRunner', this.folder.uri).get<string>('terminalName') ??
-      'Viber Command Runner';
-    this.terminal = vscode.window.terminals.find((item) => item.name === terminalName)
-      ?? vscode.window.createTerminal({
-        name: terminalName,
-        cwd: this.folder.uri.fsPath,
-      });
-    this.terminal.show(true);
+    openExternalTerminalForFolder(this.folder);
+  }
+}
+
+export function openExternalTerminalForFolder(folder: vscode.WorkspaceFolder): void {
+  const terminalName =
+    vscode.workspace.getConfiguration('viberCommandRunner', folder.uri).get<string>('terminalName') ??
+    'Viber Command Runner';
+  const terminal = vscode.window.terminals.find((item) => item.name === terminalName)
+    ?? vscode.window.createTerminal({
+      name: terminalName,
+      cwd: folder.uri.fsPath,
+    });
+  terminal.show(true);
+}
+
+interface ActiveShellRun {
+  recordId: string;
+  marker: string;
+  buffer: string;
+  cancelRequested: boolean;
+  onFinished: (result: RunFinishedResult) => void;
+  resolve: (result: RunFinishedResult) => void;
+  reject: (error: Error) => void;
+}
+
+/** Persistent interactive shell for the panel terminal (serial mode). */
+export class PanelShellSession {
+  private proc: cp.ChildProcess | undefined;
+  private activeRun: ActiveShellRun | undefined;
+  private outputHandler: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined;
+  private starting: Promise<void> | undefined;
+
+  constructor(private readonly folder: vscode.WorkspaceFolder) {}
+
+  isRunning(): boolean {
+    return !!this.activeRun;
+  }
+
+  getActiveRecordId(): string | undefined {
+    return this.activeRun?.recordId;
+  }
+
+  isAlive(): boolean {
+    return !!this.proc;
+  }
+
+  async ensureStarted(onOutput: (chunk: string, stream: 'stdout' | 'stderr') => void): Promise<void> {
+    this.outputHandler = onOutput;
+    if (this.proc) {
+      return;
+    }
+    if (this.starting) {
+      await this.starting;
+      return;
+    }
+    this.starting = this.startShell();
+    try {
+      await this.starting;
+    } finally {
+      this.starting = undefined;
+    }
+  }
+
+  writeStdin(text: string): boolean {
+    if (!this.proc?.stdin?.writable) {
+      return false;
+    }
+    const payload = text.endsWith('\n') ? text : `${text}\n`;
+    this.proc.stdin.write(payload);
+    return true;
+  }
+
+  async run(
+    definition: ReleaseCommandDefinition,
+    recordId: string,
+    onOutput: (chunk: string, stream: 'stdout' | 'stderr') => void,
+    onFinished: (result: RunFinishedResult) => void,
+  ): Promise<RunFinishedResult> {
+    await this.ensureStarted(onOutput);
+    if (this.activeRun) {
+      throw new Error(t('runner.taskAlreadyRunning'));
+    }
+
+    onOutput(`▶ ${definition.label}\n$ ${definition.command}\n`, 'stdout');
+
+    const marker = `__VIBER_EXIT_${recordId}__`;
+    const shell = resolveShellExecutable();
+    const script = buildTrackedCommandScript(definition.command, marker, shell);
+
+    return await new Promise((resolve, reject) => {
+      this.activeRun = {
+        recordId,
+        marker,
+        buffer: '',
+        cancelRequested: false,
+        onFinished,
+        resolve,
+        reject,
+      };
+      if (!this.writeStdin(script)) {
+        this.activeRun = undefined;
+        reject(new Error(t('runner.shellNotReady')));
+        return;
+      }
+    });
+  }
+
+  cancel(): boolean {
+    if (!this.proc) {
+      return false;
+    }
+    if (this.activeRun) {
+      this.activeRun.cancelRequested = true;
+    }
+    this.writeStdin('\x03');
+    return true;
+  }
+
+  dispose(): void {
+    if (this.proc?.pid) {
+      killProcessTree(this.proc.pid, 'SIGTERM');
+    }
+    this.proc = undefined;
+    this.activeRun = undefined;
+    this.outputHandler = undefined;
+  }
+
+  private async startShell(): Promise<void> {
+    const shell = resolveShellExecutable();
+    const env = await resolveCommandEnvironment();
+    const invocation = buildInteractiveShellInvocation(shell);
+    const useProcessGroup = process.platform !== 'win32';
+
+    const proc = cp.spawn(invocation.executable, invocation.args, {
+      cwd: this.folder.uri.fsPath,
+      env,
+      detached: useProcessGroup,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    if (useProcessGroup && proc.pid) {
+      proc.unref();
+    }
+
+    this.proc = proc;
+    proc.stdout?.on('data', (buf: Buffer) => {
+      this.handleOutput(decodeShellOutput(buf), 'stdout');
+    });
+    proc.stderr?.on('data', (buf: Buffer) => {
+      this.handleOutput(decodeShellOutput(buf), 'stderr');
+    });
+    proc.on('close', (code, signal) => {
+      this.proc = undefined;
+      this.finishActiveRun(resolveExitCode(code, signal), true);
+    });
+    proc.on('error', (error) => {
+      this.outputHandler?.(`\n[error] ${error.message}\n`, 'stderr');
+      this.proc = undefined;
+      this.finishActiveRun(1, false);
+    });
+  }
+
+  private handleOutput(chunk: string, stream: 'stdout' | 'stderr'): void {
+    this.outputHandler?.(chunk, stream);
+    if (!this.activeRun) {
+      return;
+    }
+
+    this.activeRun.buffer += chunk;
+    const escaped = this.activeRun.marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`${escaped}(\\d+)__`);
+    const match = pattern.exec(this.activeRun.buffer);
+    if (!match) {
+      return;
+    }
+
+    const exitCode = Number.parseInt(match[1], 10);
+    const cancelled = this.activeRun.cancelRequested;
+    const result: RunFinishedResult = {
+      exitCode: cancelled ? 130 : exitCode,
+      cancelled,
+    };
+    const run = this.activeRun;
+    this.activeRun = undefined;
+    this.outputHandler?.(
+      `\n[${cancelled ? 'cancelled' : 'exit'} ${result.exitCode}]\n`,
+      cancelled || result.exitCode !== 0 ? 'stderr' : 'stdout',
+    );
+    run.onFinished(result);
+    run.resolve(result);
+  }
+
+  private finishActiveRun(exitCode: number, cancelled: boolean): void {
+    if (!this.activeRun) {
+      return;
+    }
+    const run = this.activeRun;
+    this.activeRun = undefined;
+    const result: RunFinishedResult = {
+      exitCode: run.cancelRequested ? 130 : exitCode,
+      cancelled: run.cancelRequested || cancelled,
+    };
+    this.outputHandler?.(
+      `\n[${result.cancelled ? 'cancelled' : 'exit'} ${result.exitCode}]\n`,
+      result.cancelled || result.exitCode !== 0 ? 'stderr' : 'stdout',
+    );
+    run.onFinished(result);
+    run.resolve(result);
   }
 }
 
@@ -169,6 +394,40 @@ function buildShellInvocation(shell: string, command: string): ShellInvocation {
   }
 
   return { executable: shell, args: ['/d', '/s', '/c', command] };
+}
+
+function buildInteractiveShellInvocation(shell: string): ShellInvocation {
+  const shellBase = path.basename(shell).toLowerCase();
+  if (process.platform !== 'win32') {
+    return { executable: shell, args: ['-il'] };
+  }
+
+  if (shellBase === 'cmd.exe' || shellBase === 'cmd') {
+    return { executable: shell, args: ['/V:ON', '/Q', '/K', 'chcp 65001>nul'] };
+  }
+
+  if (shellBase.includes('powershell') || shellBase === 'pwsh.exe') {
+    return { executable: shell, args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass'] };
+  }
+
+  if (shellBase.includes('bash') || shellBase === 'sh.exe') {
+    return { executable: shell, args: ['-il'] };
+  }
+
+  return { executable: shell, args: ['/V:ON', '/Q', '/K'] };
+}
+
+function buildTrackedCommandScript(command: string, marker: string, shell: string): string {
+  if (process.platform !== 'win32') {
+    return ['set +e', command, `printf '%s\\n' "${marker}$?"__"`].join('\n');
+  }
+
+  const shellBase = path.basename(shell).toLowerCase();
+  if (shellBase.includes('powershell') || shellBase === 'pwsh.exe') {
+    return [command, `Write-Host '${marker}'$LASTEXITCODE'__'`].join('\n');
+  }
+
+  return [command, `echo ${marker}!ERRORLEVEL!__`].join('\r\n');
 }
 
 function decodeShellOutput(buf: Buffer): string {

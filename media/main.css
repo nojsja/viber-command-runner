@@ -113,7 +113,12 @@ button:disabled {
 .meta-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 6px;
+}
+
+body.window-mode .meta-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
 }
 
 body.window-mode .hero,
@@ -297,18 +302,31 @@ body.window-mode input[type='search'] {
 }
 
 .meta-card {
-  padding: 10px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 6px;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 6px;
+  min-width: 0;
 }
 
 .meta-label {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .meta-value {
-  margin-top: 4px;
+  margin-top: 0;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.25;
   word-break: break-word;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .panel {
@@ -589,6 +607,13 @@ button.hidden {
   transform: rotate(90deg);
 }
 
+.command-task-terminal .terminal-surface-task {
+  border: none;
+  border-radius: 0;
+  background: var(--vscode-terminal-background, rgba(0, 0, 0, 0.25));
+}
+
+.command-task-terminal .terminal-surface-task .terminal-output,
 .command-task-output {
   margin: 0;
   max-height: 220px;
@@ -596,11 +621,45 @@ button.hidden {
   overflow: auto;
   border: none;
   border-radius: 0;
+  padding: 8px 10px 4px;
+}
+
+.command-task-terminal .terminal-command-line-task {
+  padding: 0 10px 10px;
+}
+
+.task-stop-btn,
+.terminal-clear-btn.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  min-width: 24px;
+  min-height: 24px;
+  line-height: 0;
+}
+
+.terminal-clear-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+  opacity: 0.85;
+}
+
+.terminal-clear-btn.icon-btn:hover .terminal-clear-icon {
+  opacity: 1;
 }
 
 .task-stop-btn {
   padding: 2px 8px;
   font-size: 11px;
+}
+
+.terminal-panel-actions .terminal-clear-btn.icon-btn,
+.terminal-sticky-actions .terminal-clear-btn.icon-btn {
+  padding: 4px 8px;
+  min-width: 26px;
+  min-height: 26px;
 }
 
 body.window-mode .commands-panel {
@@ -776,10 +835,36 @@ body.window-mode .commands-panel > .adhoc-runner {
 
 .command-actions .remove-btn,
 .command-actions .copy-btn,
+.command-actions .edit-btn,
 .command-actions button[data-run-key] {
   flex-shrink: 0;
   padding: 4px 10px;
   font-size: 11px;
+}
+
+.command-actions .icon-btn,
+.command-actions button[data-run-key].icon-btn,
+#adhoc-run.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  min-width: 28px;
+  min-height: 28px;
+  line-height: 0;
+}
+
+.command-action-icon,
+.run-play-icon {
+  width: 14px;
+  height: 14px;
+  display: block;
+  opacity: 0.9;
+}
+
+.command-actions .icon-btn:hover .command-action-icon,
+.command-actions button[data-run-key].icon-btn:hover .run-play-icon {
+  opacity: 1;
 }
 
 @media (max-width: 960px) {
@@ -990,6 +1075,130 @@ body.window-mode .terminal-output {
   box-shadow: inset 0 0 0 1px rgba(248, 81, 73, 0.15);
 }
 
+.terminal-panel-body,
+.terminal-sticky-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-surface {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--vscode-terminal-background, rgba(0, 0, 0, 0.25));
+  color: var(--vscode-terminal-foreground, #cccccc);
+  font-family: var(--vscode-editor-font-family, Menlo, Monaco, 'Courier New', monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow: hidden;
+  cursor: text;
+}
+
+.terminal-surface .terminal-output {
+  flex: 1;
+  margin: 0;
+  padding: 12px 12px 4px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  min-height: 140px;
+  max-height: 42vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: text;
+}
+
+body.window-mode .terminal-surface .terminal-output {
+  min-height: 120px;
+  max-height: min(32vh, 320px);
+}
+
+.terminal-command-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  padding: 0 12px 12px;
+  min-height: calc(1.45em + 2px);
+  background: transparent;
+  cursor: text;
+}
+
+.terminal-command-line.hidden {
+  display: none;
+}
+
+.terminal-command-prompt {
+  flex-shrink: 0;
+  color: inherit;
+  white-space: pre;
+  user-select: none;
+  pointer-events: none;
+}
+
+.terminal-command-input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  caret-color: var(--vscode-terminal-foreground, #cccccc);
+  font: inherit;
+  line-height: inherit;
+  outline: none;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.terminal-command-input:focus,
+.terminal-command-input:focus-visible,
+.terminal-command-input:focus-within {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.terminal-command-line:focus-within {
+  outline: none;
+  box-shadow: none;
+}
+
+.terminal-surface:focus-within {
+  border-color: var(--border);
+  outline: none;
+  box-shadow: none;
+}
+
+.command-task-terminal .terminal-surface-task:focus-within {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+
+.terminal-command-input::placeholder {
+  color: transparent;
+}
+
+.terminal-command-input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.terminal-surface:focus-within .terminal-command-input {
+  caret-color: var(--vscode-terminal-foreground, #cccccc);
+}
+
+/* legacy aliases */
+.terminal-input-row.hidden {
+  display: none;
+}
+
 .input-overlay {
   position: fixed;
   inset: 0;
@@ -1124,13 +1333,15 @@ body.window-mode .terminal-output {
     grid-template-columns: 1fr;
   }
 
-  .meta-grid {
+  .meta-grid,
+  body.window-mode .meta-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 420px) {
-  .meta-grid {
+  .meta-grid,
+  body.window-mode .meta-grid {
     grid-template-columns: 1fr;
   }
 }

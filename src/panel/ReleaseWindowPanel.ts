@@ -3,6 +3,8 @@ import { getUiLanguage, messageCatalog, t } from '../i18n';
 import { PanelMessage } from '../types';
 import { postExtensionMessage, ReleasePanelController } from './ReleasePanelController';
 
+const CLEAR_TERMINAL_ICON = `<svg class="terminal-clear-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M2 4.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1H2.5a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1H2.5a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H2.5a.5.5 0 0 1-.5-.5z"/></svg>`;
+
 export class ReleaseWindowPanel {
   public static readonly viewType = 'viberCommandRunner.window';
 
@@ -23,8 +25,8 @@ export class ReleaseWindowPanel {
     this.controller.onToast = (level, message) => {
       postExtensionMessage(this.panel.webview, { type: 'toast', level, message });
     };
-    this.controller.onTerminalClear = () => {
-      postExtensionMessage(this.panel.webview, { type: 'terminalClear' });
+    this.controller.onTerminalClear = (recordId) => {
+      postExtensionMessage(this.panel.webview, { type: 'terminalClear', recordId });
     };
     this.controller.onTerminalOutput = (chunk, stream, recordId) => {
       postExtensionMessage(this.panel.webview, { type: 'terminalOutput', chunk, stream, recordId });
@@ -148,14 +150,18 @@ export class ReleaseWindowPanel {
         this.controller.openTerminal();
         break;
       case 'clearTerminal':
-        postExtensionMessage(this.panel.webview, { type: 'terminalClear' });
+        postExtensionMessage(this.panel.webview, { type: 'terminalClear', recordId: message.recordId });
         break;
       case 'cancelRun': {
         void this.controller.cancelRun(message.recordId);
         break;
       }
       case 'terminalInput': {
-        this.controller.submitTerminalInput(message.value, message.recordId);
+        void this.controller.submitTerminalInput(message.value, message.recordId).then((nextState) => {
+          if (nextState) {
+            postExtensionMessage(this.panel.webview, { type: 'state', payload: nextState });
+          }
+        });
         break;
       }
       default:
@@ -247,12 +253,27 @@ export class ReleaseWindowPanel {
           </button>
           <div class="terminal-sticky-actions">
             <span id="terminal-sticky-status" class="terminal-status running" data-i18n="terminal.running">Running...</span>
+            <button id="btn-sticky-clear" class="ghost terminal-clear-btn icon-btn" type="button" data-i18n-title="btn.clearTerminalTitle" data-i18n-aria="btn.clearTerminalTitle" title="Clear terminal output" aria-label="Clear terminal output">${CLEAR_TERMINAL_ICON}</button>
             <button id="btn-sticky-stop" class="danger terminal-stop-btn hidden" type="button" data-i18n="btn.abort">Abort</button>
             <button id="btn-sticky-hide" class="ghost" type="button" data-i18n="btn.hide">Hide</button>
           </div>
         </div>
         <div class="terminal-sticky-body">
-          <pre id="terminal-sticky-output" class="terminal-output terminal-sticky-output"></pre>
+          <div class="terminal-surface" data-terminal-surface="sticky">
+            <pre id="terminal-sticky-output" class="terminal-output terminal-sticky-output"></pre>
+            <div class="terminal-command-line">
+              <span id="terminal-sticky-prompt" class="terminal-command-prompt"></span>
+              <input
+                id="terminal-sticky-input"
+                class="terminal-command-input"
+                type="text"
+                spellcheck="false"
+                autocomplete="off"
+                autocapitalize="off"
+                aria-label="Terminal command"
+              />
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -309,12 +330,27 @@ export class ReleaseWindowPanel {
         </button>
         <div class="terminal-panel-actions">
           <button id="btn-sticky-show" class="ghost hidden" type="button" data-i18n="btn.showFloatingTerminal">Show Floating Terminal</button>
+          <button id="btn-terminal-panel-clear" class="ghost terminal-clear-btn icon-btn" type="button" data-i18n-title="btn.clearTerminalTitle" data-i18n-aria="btn.clearTerminalTitle" title="Clear terminal output" aria-label="Clear terminal output">${CLEAR_TERMINAL_ICON}</button>
           <button id="btn-terminal-stop" class="danger terminal-stop-btn hidden" type="button" data-i18n="btn.abort">Abort</button>
           <span id="terminal-status" class="terminal-status" data-i18n="terminal.ready">Ready</span>
         </div>
       </div>
       <div class="terminal-panel-body">
-        <pre id="terminal-output" class="terminal-output"></pre>
+        <div class="terminal-surface" data-terminal-surface="panel">
+          <pre id="terminal-output" class="terminal-output"></pre>
+          <div class="terminal-command-line">
+            <span id="terminal-panel-prompt" class="terminal-command-prompt"></span>
+            <input
+              id="terminal-panel-input"
+              class="terminal-command-input"
+              type="text"
+              spellcheck="false"
+              autocomplete="off"
+              autocapitalize="off"
+              aria-label="Terminal command"
+            />
+          </div>
+        </div>
       </div>
     </section>
   </div>

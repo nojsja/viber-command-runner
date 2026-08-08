@@ -58,6 +58,10 @@
   const confirmMessage = document.getElementById('confirm-message');
   const confirmOk = document.getElementById('confirm-ok');
   const confirmCancel = document.getElementById('confirm-cancel');
+  const terminalPanelInput = /** @type {HTMLInputElement | null} */ (document.getElementById('terminal-panel-input'));
+  const terminalStickyInput = /** @type {HTMLInputElement | null} */ (document.getElementById('terminal-sticky-input'));
+  const terminalPanelPrompt = document.getElementById('terminal-panel-prompt');
+  const terminalStickyPrompt = document.getElementById('terminal-sticky-prompt');
   const globalLoading = document.getElementById('global-loading');
   const globalLoadingText = document.getElementById('global-loading-text');
   const appToast = document.getElementById('app-toast');
@@ -79,6 +83,21 @@
   let stickyTerminalHidden = false;
   /** @type {string} */
   let runningStatusLabel = '';
+  const TERMINAL_DEFAULT_PROMPT = '>';
+  const CLEAR_TERMINAL_ICON =
+    '<svg class="terminal-clear-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M2 4.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1H2.5a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1H2.5a.5.5 0 0 1-.5-.5zm0 4a.5.5 0 0 1 .5-.5h6a.5.5 0 0 1 0 1H2.5a.5.5 0 0 1-.5-.5z"/></svg>';
+  const RUN_PLAY_ICON =
+    '<svg class="command-action-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 2.5v11l9-5.5L4 2.5z"/></svg>';
+  const EDIT_ICON =
+    '<svg class="command-action-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61a.25.25 0 0 1-.111.062l-2.862.715a.25.25 0 0 1-.311-.311l.715-2.862a.25.25 0 0 1 .062-.111l8.61-8.61zm2.475 1.414a.25.25 0 0 0-.354 0l-1.269 1.27 2.475 2.475 1.27-1.269a.25.25 0 0 0 0-.354l-1.086-1.086zM9.5 4.21l-6.11 6.11.462 1.847 1.847-.462 6.11-6.11-2.309-2.308z"/></svg>';
+  const TRASH_ICON =
+    '<svg class="command-action-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M11 1.75V3h2.25a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675a.75.75 0 1 0-1.492.15l.66 6.6A1.75 1.75 0 0 0 5.405 15h5.19c.9 0 1.652-.681 1.741-1.576l.66-6.6a.75.75 0 0 0-1.492-.15l-.66 6.6a.25.25 0 0 1-.249.225h-5.19a.25.25 0 0 1-.249-.225l-.66-6.6z"/></svg>';
+  const COPY_ICON =
+    '<svg class="command-action-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 14h-7.5A1.75 1.75 0 0 1 0 12.25v-5.5zM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/></svg>';
+  /** @type {string | undefined} */
+  let pendingTaskTerminalFocus = undefined;
+  /** @type {string | undefined} */
+  let activeTaskTerminalFocus = undefined;
 
   function showToast(level, message) {
     if (!appToast || !message) {
@@ -129,6 +148,217 @@
       finishConfirm(false);
     }
   });
+
+  function wireTerminalInput(input, target) {
+    input?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        submitTerminalLine(input.value, input, target);
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        input.value = '';
+      }
+    });
+  }
+
+  wireTerminalInput(terminalPanelInput, 'panel');
+  wireTerminalInput(terminalStickyInput, 'sticky');
+
+  document.querySelectorAll('[data-terminal-surface]').forEach((surface) => {
+    surface.addEventListener('click', (event) => {
+      const target = /** @type {HTMLElement} */ (event.target);
+      if (target.closest('.terminal-command-input')) {
+        return;
+      }
+      const selection = window.getSelection?.()?.toString() ?? '';
+      if (selection.trim()) {
+        return;
+      }
+      const kind = surface.getAttribute('data-terminal-surface');
+      const input = kind === 'sticky' ? terminalStickyInput : terminalPanelInput;
+      input?.focus();
+    });
+  });
+
+  function detectTerminalPrompt(buffer) {
+    const clean = stripAnsi(buffer).trimEnd();
+    if (!clean) {
+      return TERMINAL_DEFAULT_PROMPT;
+    }
+    const lines = clean.split('\n');
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index];
+      const winPrompt = line.match(/([A-Za-z]:\\(?:[^>\n\\]|\\.)*>)\s*$/);
+      if (winPrompt) {
+        return winPrompt[1];
+      }
+      if (/>\s*$/.test(line)) {
+        const generic = line.match(/(.*?>\s*)$/);
+        if (generic) {
+          return generic[1].trimEnd();
+        }
+        return '>';
+      }
+      if (/\$\s*$/.test(line)) {
+        return '$';
+      }
+    }
+    return TERMINAL_DEFAULT_PROMPT;
+  }
+
+  function stripTrailingPromptLine(buffer, prompt) {
+    if (!buffer || !prompt) {
+      return buffer;
+    }
+    const clean = stripAnsi(buffer);
+    const lines = clean.split('\n');
+    const lastLine = lines[lines.length - 1] ?? '';
+    const normalizedPrompt = prompt.trimEnd();
+    const normalizedLast = lastLine.trimEnd();
+    if (normalizedLast !== normalizedPrompt && !normalizedLast.endsWith(normalizedPrompt)) {
+      return buffer;
+    }
+    const promptIndex = clean.lastIndexOf(lastLine);
+    if (promptIndex <= 0) {
+      return '';
+    }
+    return buffer.slice(0, promptIndex);
+  }
+
+  function updateTerminalPrompts() {
+    const prompt = detectTerminalPrompt(terminalBuffer);
+    if (terminalPanelPrompt) {
+      terminalPanelPrompt.textContent = prompt;
+    }
+    if (terminalStickyPrompt) {
+      terminalStickyPrompt.textContent = prompt;
+    }
+    return prompt;
+  }
+
+  function submitTerminalLine(value, sourceInput, target) {
+    const line = value ?? '';
+    const promptEl = target === 'sticky' ? terminalStickyPrompt : terminalPanelPrompt;
+    const prompt = promptEl?.textContent || TERMINAL_DEFAULT_PROMPT;
+    appendTerminal(`${prompt}${line}\n`, 'stdout');
+    vscode.postMessage({ type: 'terminalInput', value: line });
+    if (sourceInput) {
+      sourceInput.value = '';
+    }
+    renderTerminal();
+    sourceInput?.focus();
+  }
+
+  function updateTerminalInputChrome() {
+    const parallel = !!state?.parallelMode;
+    document
+      .querySelectorAll('[data-terminal-surface="panel"] .terminal-command-line, [data-terminal-surface="sticky"] .terminal-command-line')
+      .forEach((row) => {
+        row.classList.toggle('hidden', parallel);
+      });
+    [terminalPanelInput, terminalStickyInput].forEach((input) => {
+      if (!input) {
+        return;
+      }
+      input.disabled = parallel;
+    });
+  }
+
+  function isScrolledToBottom(node, threshold = 12) {
+    return node.scrollHeight - node.scrollTop - node.clientHeight <= threshold;
+  }
+
+  function scrollTaskTerminalToBottom(recordId) {
+    const node = document.getElementById(`task-terminal-output-${recordId}`);
+    if (node) {
+      node.scrollTop = node.scrollHeight;
+    }
+  }
+
+  function scrollAllTaskTerminalsToBottom(preferredRecordId) {
+    document.querySelectorAll('.command-task-output').forEach((node) => {
+      const recordId = node.id.replace('task-terminal-output-', '');
+      if (!recordId) {
+        return;
+      }
+      if (!preferredRecordId || recordId === preferredRecordId || isScrolledToBottom(node)) {
+        node.scrollTop = node.scrollHeight;
+      }
+    });
+  }
+
+  function updateTaskTerminalOutputNode(recordId) {
+    const output = taskOutputs[recordId];
+    const node = document.getElementById(`task-terminal-output-${recordId}`);
+    if (!output || !node) {
+      return;
+    }
+    const prompt = detectTerminalPrompt(output.buffer);
+    node.textContent = stripTrailingPromptLine(output.buffer, prompt);
+    const promptEl = document.querySelector(`.task-terminal-prompt[data-record-id="${CSS.escape(recordId)}"]`);
+    if (promptEl) {
+      promptEl.textContent = prompt;
+    }
+    node.classList.toggle('has-stderr', output.hasStderr);
+    requestAnimationFrame(() => {
+      scrollTaskTerminalToBottom(recordId);
+    });
+  }
+
+  function submitTaskTerminalLine(recordId, value, sourceInput) {
+    const line = value ?? '';
+    pendingTaskTerminalFocus = recordId;
+    scrollTaskTerminalToBottom(recordId);
+    vscode.postMessage({ type: 'terminalInput', value: line, recordId });
+    if (sourceInput) {
+      sourceInput.value = '';
+    }
+  }
+
+  function restorePendingTaskTerminalFocus() {
+    const recordId = pendingTaskTerminalFocus || activeTaskTerminalFocus;
+    if (!recordId) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      const input = document.querySelector(
+        `.task-terminal-input[data-record-id="${CSS.escape(recordId)}"]`,
+      );
+      if (input instanceof HTMLInputElement) {
+        input.focus();
+        pendingTaskTerminalFocus = undefined;
+      }
+    });
+  }
+
+  function wireTaskTerminalInput(input, recordId) {
+    input?.addEventListener('focus', () => {
+      activeTaskTerminalFocus = recordId;
+    });
+    input?.addEventListener('blur', (event) => {
+      const related = /** @type {HTMLElement | null} */ (event.relatedTarget);
+      if (!related) {
+        return;
+      }
+      if (related.closest('.command-task-terminal')) {
+        return;
+      }
+      if (activeTaskTerminalFocus === recordId) {
+        activeTaskTerminalFocus = undefined;
+      }
+    });
+    input?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        submitTaskTerminalLine(recordId, input.value, input);
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        input.value = '';
+      }
+    });
+  }
 
   btnStickyHide?.addEventListener('click', () => {
     stickyTerminalHidden = true;
@@ -193,7 +423,13 @@
     vscode.postMessage({ type: 'openTerminal' });
   });
   document.getElementById('btn-clear-terminal')?.addEventListener('click', () => {
-    vscode.postMessage({ type: 'clearTerminal' });
+    clearMainTerminal();
+  });
+  document.getElementById('btn-terminal-panel-clear')?.addEventListener('click', () => {
+    clearMainTerminal();
+  });
+  document.getElementById('btn-sticky-clear')?.addEventListener('click', () => {
+    clearMainTerminal();
   });
   document.querySelectorAll('.terminal-stop-btn').forEach((button) => {
     button.addEventListener('click', () => {
@@ -272,8 +508,11 @@
       return;
     }
     if (message.type === 'terminalClear') {
-      terminalBuffer = '';
-      renderTerminal();
+      if (message.recordId) {
+        clearTaskTerminal(message.recordId);
+      } else {
+        clearMainTerminal();
+      }
       return;
     }
     if (message.type === 'terminalOutput') {
@@ -405,6 +644,32 @@
     renderHistorySection(true);
     syncTerminalFold();
     updateTerminalChrome();
+    syncAdhocRunButton();
+    restorePendingTaskTerminalFocus();
+    const preferredTerminal = pendingTaskTerminalFocus || activeTaskTerminalFocus;
+    requestAnimationFrame(() => {
+      scrollAllTaskTerminalsToBottom(preferredTerminal);
+      requestAnimationFrame(() => {
+        scrollAllTaskTerminalsToBottom(preferredTerminal);
+      });
+    });
+  }
+
+  function syncAdhocRunButton() {
+    if (!adhocRun) {
+      return;
+    }
+    if (state?.parallelMode) {
+      adhocRun.innerHTML = RUN_PLAY_ICON;
+      adhocRun.classList.add('icon-btn', 'run-btn');
+      adhocRun.setAttribute('aria-label', t('adhoc.runTitle'));
+      adhocRun.setAttribute('title', t('adhoc.runTitle'));
+    } else {
+      adhocRun.textContent = t('btn.execute');
+      adhocRun.classList.remove('icon-btn', 'run-btn');
+      adhocRun.setAttribute('title', t('adhoc.runTitle'));
+      adhocRun.removeAttribute('aria-label');
+    }
   }
 
   function runAdhocCommand() {
@@ -421,8 +686,13 @@
     }
 
     const groups = state.commandGroups || [];
+    const commandGroupsScroll = document.getElementById('command-groups-scroll');
+    const savedScrollTop = commandGroupsScroll?.scrollTop ?? 0;
     if (!groups.length) {
       commandGroupsRoot.innerHTML = `<div class="empty">${escapeHtml(t('empty.noCommands'))}</div>`;
+      if (commandGroupsScroll) {
+        commandGroupsScroll.scrollTop = savedScrollTop;
+      }
       return;
     }
 
@@ -431,6 +701,9 @@
     commandGroupsRoot.querySelectorAll('.command-task-terminals').forEach((container) => {
       bindTaskTerminalEvents(container);
     });
+    if (commandGroupsScroll) {
+      commandGroupsScroll.scrollTop = savedScrollTop;
+    }
   }
 
   function renderCommandGroup(group) {
@@ -716,6 +989,7 @@
         terminalStatus.textContent = parallelRunning ? t('terminal.running') : t('terminal.ready');
         terminalStatus.className = parallelRunning ? 'terminal-status running' : 'terminal-status';
       }
+      updateTerminalInputChrome();
       return;
     }
 
@@ -746,6 +1020,7 @@
         terminalStickyStatus.textContent = statusText;
         terminalStickyStatus.className = 'terminal-status running';
       }
+      updateTerminalInputChrome();
       return;
     }
 
@@ -761,6 +1036,7 @@
       terminalStickyStatus.className = 'terminal-status failed';
     }
 
+    updateTerminalInputChrome();
     updateTerminalPreview();
   }
 
@@ -823,6 +1099,25 @@
     syncHistoryPanelLayout();
   }
 
+  function clearMainTerminal() {
+    terminalBuffer = '';
+    renderTerminal();
+  }
+
+  function clearTaskTerminal(recordId) {
+    if (!recordId) {
+      return;
+    }
+    taskOutputs[recordId] = { buffer: '', hasStderr: false };
+    const node = document.getElementById(`task-terminal-output-${recordId}`);
+    if (node) {
+      updateTaskTerminalOutputNode(recordId);
+      updateTaskTerminalPreview(recordId);
+      return;
+    }
+    render();
+  }
+
   function appendTerminal(chunk, stream) {
     terminalBuffer += stripAnsi(chunk);
     if (terminalBuffer.length > MAX_TERMINAL_CHARS) {
@@ -849,9 +1144,7 @@
     }
     const node = document.getElementById(`task-terminal-output-${recordId}`);
     if (node) {
-      node.textContent = output.buffer;
-      node.classList.toggle('has-stderr', output.hasStderr);
-      node.scrollTop = node.scrollHeight;
+      updateTaskTerminalOutputNode(recordId);
       updateTaskTerminalPreview(recordId);
       return;
     }
@@ -859,7 +1152,21 @@
   }
 
   function getTaskSessionsForCommand(commandKey) {
-    return (state?.taskSessions || []).filter((session) => session.commandKey === commandKey);
+    const sessions = (state?.taskSessions || []).filter((session) => session.commandKey === commandKey);
+    if (sessions.length <= 1) {
+      return sessions;
+    }
+    const latest = sessions.reduce((best, item) => (item.startedAt > best.startedAt ? item : best));
+    return [latest];
+  }
+
+  function getAdhocTaskSessions() {
+    const sessions = (state?.taskSessions || []).filter((session) => session.commandKey.startsWith('adhoc:'));
+    if (sessions.length <= 1) {
+      return sessions;
+    }
+    const latest = sessions.reduce((best, item) => (item.startedAt > best.startedAt ? item : best));
+    return [latest];
   }
 
   function isTaskTerminalExpanded(recordId) {
@@ -909,6 +1216,8 @@
           ? t('status.cancelled')
           : t('terminal.failed', { exit: session.exitCode !== undefined ? ` (exit ${session.exitCode})` : '' });
     const preview = taskTerminalPreviewLine(session.recordId);
+    const prompt = detectTerminalPrompt(output.buffer);
+    const logBuffer = stripTrailingPromptLine(output.buffer, prompt);
     return `
       <div class="command-task-terminal panel${expanded ? '' : ' terminal-collapsed'}" data-record-id="${escapeHtmlAttr(session.recordId)}">
         <div class="command-task-terminal-head terminal-head">
@@ -919,11 +1228,26 @@
           </button>
           <div class="command-task-terminal-actions">
             <span class="terminal-status ${statusClass}">${escapeHtml(statusText)}</span>
+            <button type="button" class="ghost terminal-clear-btn icon-btn" data-clear-record="${escapeHtmlAttr(session.recordId)}" title="${escapeHtmlAttr(t('btn.clearTerminalTitle'))}" aria-label="${escapeHtmlAttr(t('btn.clearTerminalTitle'))}">${CLEAR_TERMINAL_ICON}</button>
             ${isRunning ? `<button type="button" class="danger ghost task-stop-btn" data-cancel-record="${escapeHtmlAttr(session.recordId)}">${escapeHtml(t('btn.abort'))}</button>` : ''}
           </div>
         </div>
         <div class="command-task-terminal-body">
-          <pre id="task-terminal-output-${escapeHtmlAttr(session.recordId)}" class="terminal-output command-task-output${output.hasStderr ? ' has-stderr' : ''}">${escapeHtml(output.buffer)}</pre>
+          <div class="terminal-surface terminal-surface-task" data-terminal-surface="task" data-record-id="${escapeHtmlAttr(session.recordId)}">
+            <pre id="task-terminal-output-${escapeHtmlAttr(session.recordId)}" class="terminal-output command-task-output${output.hasStderr ? ' has-stderr' : ''}">${escapeHtml(logBuffer)}</pre>
+            <div class="terminal-command-line terminal-command-line-task">
+              <span class="terminal-command-prompt task-terminal-prompt" data-record-id="${escapeHtmlAttr(session.recordId)}">${escapeHtml(prompt)}</span>
+              <input
+                class="terminal-command-input task-terminal-input"
+                data-record-id="${escapeHtmlAttr(session.recordId)}"
+                type="text"
+                spellcheck="false"
+                autocomplete="off"
+                autocapitalize="off"
+                aria-label="Terminal command"
+              />
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -933,7 +1257,7 @@
     if (!adhocTaskTerminals) {
       return;
     }
-    const sessions = (state?.taskSessions || []).filter((session) => session.commandKey.startsWith('adhoc:'));
+    const sessions = getAdhocTaskSessions();
     adhocTaskTerminals.innerHTML = sessions.map(renderTaskTerminal).join('');
     bindTaskTerminalEvents(adhocTaskTerminals);
   }
@@ -954,6 +1278,38 @@
         if (recordId) {
           vscode.postMessage({ type: 'cancelRun', recordId });
         }
+      });
+    });
+    root?.querySelectorAll('[data-clear-record]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const recordId = button.getAttribute('data-clear-record');
+        if (recordId) {
+          clearTaskTerminal(recordId);
+        }
+      });
+    });
+    root?.querySelectorAll('.task-terminal-input').forEach((input) => {
+      const recordId = input.getAttribute('data-record-id');
+      if (recordId) {
+        wireTaskTerminalInput(input, recordId);
+      }
+    });
+    root?.querySelectorAll('[data-terminal-surface="task"]').forEach((surface) => {
+      surface.addEventListener('click', (event) => {
+        const target = /** @type {HTMLElement} */ (event.target);
+        if (target.closest('.terminal-command-input')) {
+          return;
+        }
+        const selection = window.getSelection?.()?.toString() ?? '';
+        if (selection.trim()) {
+          return;
+        }
+        const recordId = surface.getAttribute('data-record-id');
+        const input = recordId
+          ? surface.querySelector(`.task-terminal-input[data-record-id="${CSS.escape(recordId)}"]`)
+          : null;
+        input?.focus();
       });
     });
   }
@@ -1070,13 +1426,16 @@
   }
 
   function renderTerminal(stderrHighlight) {
+    const prompt = updateTerminalPrompts();
+    const logBuffer = stripTrailingPromptLine(terminalBuffer, prompt);
+
     if (terminalOutput) {
-      terminalOutput.textContent = terminalBuffer;
+      terminalOutput.textContent = logBuffer;
       terminalOutput.classList.toggle('has-stderr', !!stderrHighlight);
       terminalOutput.scrollTop = terminalOutput.scrollHeight;
     }
     if (terminalStickyOutput) {
-      terminalStickyOutput.textContent = terminalBuffer;
+      terminalStickyOutput.textContent = logBuffer;
       terminalStickyOutput.classList.toggle('has-stderr', !!stderrHighlight);
       terminalStickyOutput.scrollTop = terminalStickyOutput.scrollHeight;
     }
@@ -1097,9 +1456,12 @@
     const sessions = state.parallelMode ? getTaskSessionsForCommand(command.key) : [];
     const taskTerminals = sessions.map(renderTaskTerminal).join('');
     const removeButton = command.customId
-      ? `<button type="button" class="ghost edit-btn" title="${escapeHtmlAttr(t('btn.editTitle'))}" ${disabled ? 'disabled' : ''} data-edit-custom="${escapeHtmlAttr(command.customId)}">${escapeHtml(t('btn.edit'))}</button>
-         <button type="button" class="ghost remove-btn" title="${escapeHtmlAttr(t('btn.removeTitle'))}" ${disabled ? 'disabled' : ''} data-remove-custom="${escapeHtmlAttr(command.customId)}" data-remove-label="${escapeHtmlAttr(command.label)}">${escapeHtml(t('btn.remove'))}</button>`
+      ? `<button type="button" class="ghost edit-btn icon-btn" title="${escapeHtmlAttr(t('btn.editTitle'))}" aria-label="${escapeHtmlAttr(t('btn.editTitle'))}" ${disabled ? 'disabled' : ''} data-edit-custom="${escapeHtmlAttr(command.customId)}">${EDIT_ICON}</button>
+         <button type="button" class="ghost remove-btn icon-btn" title="${escapeHtmlAttr(t('btn.removeTitle'))}" aria-label="${escapeHtmlAttr(t('btn.removeTitle'))}" ${disabled ? 'disabled' : ''} data-remove-custom="${escapeHtmlAttr(command.customId)}" data-remove-label="${escapeHtmlAttr(command.label)}">${TRASH_ICON}</button>`
       : '';
+    const runButton = state.parallelMode
+      ? `<button type="button" class="run-btn icon-btn" title="${escapeHtmlAttr(t('btn.runTitle'))}" aria-label="${escapeHtmlAttr(t('btn.runTitle'))}" ${disabled ? 'disabled' : ''} data-run-key="${escapeHtmlAttr(command.key)}">${RUN_PLAY_ICON}</button>`
+      : `<button type="button" title="${escapeHtmlAttr(t('btn.runTitle'))}" ${disabled ? 'disabled' : ''} data-run-key="${escapeHtmlAttr(command.key)}">${escapeHtml(t('btn.run'))}</button>`;
     return `
       <article class="command-card" title="${tip}">
         <div class="command-top">
@@ -1114,8 +1476,8 @@
         </div>
         <div class="command-actions">
           ${removeButton}
-          <button type="button" class="ghost copy-btn" title="${escapeHtmlAttr(t('btn.copyTitle'))}" data-copy-command="${escapeHtmlAttr(command.command)}">${escapeHtml(t('btn.copy'))}</button>
-          <button type="button" title="${escapeHtmlAttr(t('btn.runTitle'))}" ${disabled ? 'disabled' : ''} data-run-key="${escapeHtmlAttr(command.key)}">${escapeHtml(t('btn.run'))}</button>
+          <button type="button" class="ghost copy-btn icon-btn" title="${escapeHtmlAttr(t('btn.copyTitle'))}" aria-label="${escapeHtmlAttr(t('btn.copyTitle'))}" data-copy-command="${escapeHtmlAttr(command.command)}">${COPY_ICON}</button>
+          ${runButton}
         </div>
         ${taskTerminals ? `<div class="command-task-terminals">${taskTerminals}</div>` : ''}
       </article>

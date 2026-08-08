@@ -84,7 +84,7 @@ export type PanelMessage =
   | { type: 'syncOss' }
   | { type: 'openSettings' }
   | { type: 'openTerminal' }
-  | { type: 'clearTerminal' }
+  | { type: 'clearTerminal'; recordId?: string }
   | { type: 'cancelRun'; recordId?: string }
   | { type: 'terminalInput'; value: string; recordId?: string }
   | { type: 'exportConfig' }
@@ -101,7 +101,7 @@ export type ExtensionMessage =
   | { type: 'loading'; active: boolean; messageKey?: 'loading.initial' | 'loading.refresh' | 'loading.sync' }
   | { type: 'toast'; level: 'info' | 'warn' | 'error'; message: string }
   | { type: 'runStarted'; recordId: string; label: string; commandKey?: string }
-  | { type: 'terminalClear' }
+  | { type: 'terminalClear'; recordId?: string }
   | { type: 'terminalOutput'; chunk: string; stream: 'stdout' | 'stderr'; recordId?: string }
   | { type: 'interactivePrompt'; prompt: string; context: string; shortcuts: InteractiveShortcut[]; recordId?: string }
   | { type: 'interactivePromptDismiss' }
