@@ -1,0 +1,7 @@
+{
+    "i18n-ally.localesPaths": [
+        "out/i18n",
+        "src/i18n",
+        "webview/src/i18n"
+    ]
+}

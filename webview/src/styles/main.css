@@ -87,6 +87,15 @@ body.window-mode .content-grid > * {
   flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
+  align-items: center;
+}
+
+.hero-icon-group {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  gap: 6px;
+  align-items: center;
 }
 
 .hero-actions .hero-icon-btn {
@@ -97,6 +106,12 @@ body.window-mode .content-grid > * {
   min-width: 28px;
   min-height: 28px;
   line-height: 0;
+  flex-shrink: 0;
+}
+
+.hero-actions .hero-icon-btn .command-action-icon {
+  width: 15px;
+  height: 15px;
 }
 
 button {
