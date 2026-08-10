@@ -85,7 +85,11 @@ export function StickyTerminal() {
             </span>
           </button>
           <div class="terminal-sticky-actions">
-            <span id="terminal-sticky-status" class={stickyStatusClass}>
+            <span
+              id="terminal-sticky-status"
+              class={stickyStatusClass}
+              title={stickyStatusText}
+            >
               {stickyStatusText}
             </span>
             <button

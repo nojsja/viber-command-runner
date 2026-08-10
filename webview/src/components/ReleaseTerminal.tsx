@@ -105,7 +105,7 @@ export function ReleaseTerminal() {
               {t('btn.abort')}
             </button>
           ) : null}
-          <span id="terminal-status" class={terminalStatusClass}>
+          <span id="terminal-status" class={terminalStatusClass} title={terminalStatusText}>
             {terminalStatusText}
           </span>
         </div>

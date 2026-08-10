@@ -960,11 +960,32 @@ body.window-mode .command-group .command-list > .command-card {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 72%;
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.terminal-panel-actions > button,
+.terminal-sticky-actions > button {
   flex-shrink: 0;
+}
+
+.terminal-panel-actions .terminal-status,
+.terminal-sticky-actions .terminal-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: min(42vw, 360px);
+  flex: 0 1 auto;
 }
 
 .terminal-head {
   min-height: 28px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .terminal-panel:not(.terminal-collapsed) .terminal-head,
