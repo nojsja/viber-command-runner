@@ -22,6 +22,8 @@ import {
 import type { VsCodeApi } from '../vite-env.d';
 
 export const HISTORY_PAGE_SIZE = 10;
+/** Sticky run log only appears after a command has been running this long. */
+const STICKY_MIN_RUN_MS = 1000;
 
 let vscodeApi: VsCodeApi | undefined;
 
@@ -56,6 +58,9 @@ export interface PanelContextValue {
   editingCustomId: string | undefined;
   editingCustomDraft: { label: string; command: string } | undefined;
   setEditingCustomDraft: (draft: { label: string; command: string } | undefined) => void;
+  editingPresetKey: string | undefined;
+  editingPresetDraft: { label: string; command: string } | undefined;
+  setEditingPresetDraft: (draft: { label: string; command: string } | undefined) => void;
   historyPage: number;
   setHistoryPage: (page: number | ((prev: number) => number)) => void;
   adhocCommand: string;
@@ -81,6 +86,9 @@ export interface PanelContextValue {
   addCustomCommand: (label: string, command: string) => void;
   updateCustomCommand: (customId: string, label: string, command: string) => void;
   removeCustomCommand: (customId: string) => void;
+  addPresetCommand: (label: string, command: string) => void;
+  updatePresetCommand: (presetKey: string, label: string, command: string) => void;
+  removePresetCommand: (presetKey: string) => void;
   setParallelMode: (enabled: boolean) => void;
   setTerminalFold: (target: 'sticky' | 'panel', expanded: boolean) => void;
   clearTerminal: (recordId?: string) => void;
@@ -98,12 +106,22 @@ export interface PanelContextValue {
   cancelEditCustomCommand: () => void;
   clearCustomFormDraft: () => void;
   findCustomCommandById: (customId: string) => { label: string; command: string } | undefined;
+  startEditPresetCommand: (presetKey: string) => void;
+  cancelEditPresetCommand: () => void;
+  clearPresetFormDraft: () => void;
+  findPresetCommandByKey: (presetKey: string) => { label: string; command: string } | undefined;
   getTaskSessionsForCommand: (commandKey: string) => TaskSessionView[];
   getAdhocTaskSessions: () => TaskSessionView[];
   getTaskOutput: (recordId: string) => TaskOutput;
   getTaskTerminalPreview: (recordId: string) => string;
   isTaskTerminalExpanded: (recordId: string) => boolean;
-  matchesCommandFilter: (command: { label: string; platform: string; releaseType: string; destinations?: string[] }) => boolean;
+  matchesCommandFilter: (command: {
+    label: string;
+    command?: string;
+    platform: string;
+    releaseType: string;
+    destinations?: string[];
+  }) => boolean;
   restorePendingTaskTerminalFocus: () => void;
   scrollTaskTerminalToBottom: (recordId: string, node?: HTMLElement | null) => void;
   scrollAllTaskTerminalsToBottom: (preferredRecordId?: string) => void;
@@ -151,9 +169,12 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
   const [currentPromptText, setCurrentPromptText] = useState('');
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [stickyTerminalHidden, setStickyTerminalHidden] = useState(false);
+  const [stickyRunEligible, setStickyRunEligible] = useState(false);
   const [runningStatusLabel, setRunningStatusLabel] = useState('');
   const [editingCustomId, setEditingCustomId] = useState<string | undefined>();
   const [editingCustomDraft, setEditingCustomDraft] = useState<{ label: string; command: string } | undefined>();
+  const [editingPresetKey, setEditingPresetKey] = useState<string | undefined>();
+  const [editingPresetDraft, setEditingPresetDraft] = useState<{ label: string; command: string } | undefined>();
   const [historyPage, setHistoryPage] = useState(1);
   const [adhocCommand, setAdhocCommand] = useState('');
   const [activeTaskTerminalFocus, setActiveTaskTerminalFocus] = useState<string | undefined>();
@@ -169,6 +190,14 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
   terminalBufferRef.current = terminalBuffer;
   const metaGridRef = useRef<HTMLElement | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const stickyDelayTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const clearStickyDelayTimer = useCallback(() => {
+    if (stickyDelayTimerRef.current) {
+      clearTimeout(stickyDelayTimerRef.current);
+      stickyDelayTimerRef.current = undefined;
+    }
+  }, []);
 
   const postMessage = useCallback((message: Parameters<VsCodeApi['postMessage']>[0]) => {
     vscode.postMessage(message);
@@ -368,6 +397,20 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
     [panelState?.commandGroups],
   );
 
+  const findPresetCommandByKey = useCallback(
+    (presetKey: string) => {
+      for (const group of panelState?.commandGroups ?? []) {
+        for (const command of group.commands ?? []) {
+          if (command.presetKey === presetKey) {
+            return { label: command.label, command: command.command };
+          }
+        }
+      }
+      return undefined;
+    },
+    [panelState?.commandGroups],
+  );
+
   const startEditCustomCommand = useCallback(
     (customId: string) => {
       const command = findCustomCommandById(customId);
@@ -389,6 +432,29 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
   const clearCustomFormDraft = useCallback(() => {
     setEditingCustomId(undefined);
     setEditingCustomDraft(undefined);
+  }, []);
+
+  const startEditPresetCommand = useCallback(
+    (presetKey: string) => {
+      const command = findPresetCommandByKey(presetKey);
+      if (!command) {
+        return;
+      }
+      setEditingPresetKey(presetKey);
+      setEditingPresetDraft({ label: command.label, command: command.command });
+      setLocalGroupFold((prev) => ({ ...prev, release: true }));
+    },
+    [findPresetCommandByKey],
+  );
+
+  const cancelEditPresetCommand = useCallback(() => {
+    setEditingPresetKey(undefined);
+    setEditingPresetDraft(undefined);
+  }, []);
+
+  const clearPresetFormDraft = useCallback(() => {
+    setEditingPresetKey(undefined);
+    setEditingPresetDraft(undefined);
   }, []);
 
   const setFilterText = useCallback((value: string) => {
@@ -425,16 +491,46 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
   const normalizedFilter = filterText.trim().toLowerCase();
 
   const matchesCommandFilter = useCallback(
-    (command: { label: string; platform: string; releaseType: string; destinations?: string[] }) => {
+    (command: {
+      label: string;
+      command?: string;
+      platform: string;
+      releaseType: string;
+      destinations?: string[];
+    }) => {
       if (!normalizedFilter) {
         return true;
       }
-      const haystack = [command.label, command.platform, command.releaseType, ...(command.destinations || [])]
+      const haystack = [
+        command.label,
+        command.command,
+        command.platform,
+        command.releaseType,
+        ...(command.destinations || []),
+      ]
         .join(' ')
         .toLowerCase();
       return haystack.includes(normalizedFilter);
     },
     [normalizedFilter],
+  );
+
+  const addCustomCommand = useCallback(
+    (label: string, command: string) => {
+      setFilterTextState('');
+      setLocalGroupFold((prev) => ({ ...prev, custom: true }));
+      postMessage({ type: 'addCustomCommand', label, command });
+    },
+    [postMessage],
+  );
+
+  const addPresetCommand = useCallback(
+    (label: string, command: string) => {
+      setFilterTextState('');
+      setLocalGroupFold((prev) => ({ ...prev, release: true }));
+      postMessage({ type: 'addPresetCommand', label, command });
+    },
+    [postMessage],
   );
 
   const isTerminalExpanded = useCallback(
@@ -522,22 +618,22 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
   const parallelRunning = (panelState?.runningRecordIds || []).length > 0;
   const latestRecord = panelState?.records?.[0];
   const keepStickyOnFailure = !isRunning && latestRecord?.status === 'failed';
+  const stickyActive =
+    stickyRunEligible && (isRunning || keepStickyOnFailure);
 
   const showStickyTerminal = useMemo(() => {
     if (panelState?.parallelMode) {
       return false;
     }
-    const stickyActive = isRunning || keepStickyOnFailure;
     return stickyActive && !stickyTerminalHidden;
-  }, [panelState?.parallelMode, isRunning, keepStickyOnFailure, stickyTerminalHidden]);
+  }, [panelState?.parallelMode, stickyActive, stickyTerminalHidden]);
 
   const showStickyShowButton = useMemo(() => {
     if (panelState?.parallelMode) {
       return false;
     }
-    const stickyActive = isRunning || keepStickyOnFailure;
     return stickyActive && stickyTerminalHidden;
-  }, [panelState?.parallelMode, isRunning, keepStickyOnFailure, stickyTerminalHidden]);
+  }, [panelState?.parallelMode, stickyActive, stickyTerminalHidden]);
 
   const showStopButtons = panelState?.parallelMode ? parallelRunning : isRunning;
 
@@ -667,8 +763,15 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
           }));
           return;
         }
-        setStickyTerminalHidden(false);
+        clearStickyDelayTimer();
+        setStickyRunEligible(false);
         setRunningStatusLabel(message.label || '');
+        stickyDelayTimerRef.current = setTimeout(() => {
+          if (panelStateRef.current?.runningRecordId) {
+            setStickyRunEligible(true);
+            setStickyTerminalHidden(false);
+          }
+        }, STICKY_MIN_RUN_MS);
         return;
       }
       if (message.type === 'interactivePrompt') {
@@ -704,7 +807,22 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
     showInteractivePrompt,
     showToast,
     vscode,
+    clearStickyDelayTimer,
   ]);
+
+  useEffect(() => {
+    return () => clearStickyDelayTimer();
+  }, [clearStickyDelayTimer]);
+
+  useEffect(() => {
+    if (isRunning || panelState?.parallelMode) {
+      return;
+    }
+    clearStickyDelayTimer();
+    if (latestRecord?.status !== 'failed') {
+      setStickyRunEligible(false);
+    }
+  }, [isRunning, panelState?.parallelMode, latestRecord?.status, clearStickyDelayTimer]);
 
   useEffect(() => {
     postMessage({ type: 'ready' });
@@ -740,6 +858,9 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
     editingCustomId,
     editingCustomDraft,
     setEditingCustomDraft,
+    editingPresetKey,
+    editingPresetDraft,
+    setEditingPresetDraft,
     historyPage,
     setHistoryPage,
     adhocCommand,
@@ -762,10 +883,14 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
     copyCommand: (command) => postMessage({ type: 'copyCommand', command }),
     pasteAdhocCommand: () => postMessage({ type: 'pasteAdhocCommand' }),
     runRawCommand: (command) => postMessage({ type: 'runRawCommand', command }),
-    addCustomCommand: (label, command) => postMessage({ type: 'addCustomCommand', label, command }),
+    addCustomCommand,
     updateCustomCommand: (customId, label, command) =>
       postMessage({ type: 'updateCustomCommand', customId, label, command }),
     removeCustomCommand: (customId) => postMessage({ type: 'removeCustomCommand', customId }),
+    addPresetCommand,
+    updatePresetCommand: (presetKey, label, command) =>
+      postMessage({ type: 'updatePresetCommand', presetKey, label, command }),
+    removePresetCommand: (presetKey) => postMessage({ type: 'removePresetCommand', presetKey }),
     setParallelMode: (enabled) => postMessage({ type: 'setParallelMode', enabled }),
     setTerminalFold,
     clearTerminal,
@@ -783,6 +908,10 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
     cancelEditCustomCommand,
     clearCustomFormDraft,
     findCustomCommandById,
+    startEditPresetCommand,
+    cancelEditPresetCommand,
+    clearPresetFormDraft,
+    findPresetCommandByKey,
     getTaskSessionsForCommand,
     getAdhocTaskSessions,
     getTaskOutput,

@@ -1,5 +1,6 @@
 import { t } from '../i18n';
 import { usePanel } from '../context/PanelContext';
+import { ExportIcon, ImportIcon, RefreshIcon, SettingsIcon } from './icons';
 
 export function Hero() {
   const {
@@ -16,10 +17,7 @@ export function Hero() {
 
   return (
     <header class="hero">
-      <div>
-        <div class="eyebrow">Viber Command Runner</div>
-        <h1>{t('panel.title')}</h1>
-      </div>
+      <h1>{t('panel.title')}</h1>
       <div class="hero-actions">
         <button
           type="button"
@@ -37,17 +35,41 @@ export function Hero() {
         <button type="button" class="ghost" onClick={syncOss}>
           {t('btn.syncOss')}
         </button>
-        <button type="button" class="ghost" onClick={refresh}>
-          {t('btn.refresh')}
+        <button
+          type="button"
+          class="ghost icon-btn hero-icon-btn"
+          title={t('btn.refresh')}
+          aria-label={t('btn.refresh')}
+          onClick={refresh}
+        >
+          <RefreshIcon />
         </button>
-        <button type="button" class="ghost" onClick={importConfig} title={t('btn.importConfigTitle')}>
-          {t('btn.importConfig')}
+        <button
+          type="button"
+          class="ghost icon-btn hero-icon-btn"
+          title={t('btn.importConfigTitle')}
+          aria-label={t('btn.importConfigTitle')}
+          onClick={importConfig}
+        >
+          <ImportIcon />
         </button>
-        <button type="button" class="ghost" onClick={exportConfig} title={t('btn.exportConfigTitle')}>
-          {t('btn.exportConfig')}
+        <button
+          type="button"
+          class="ghost icon-btn hero-icon-btn"
+          title={t('btn.exportConfigTitle')}
+          aria-label={t('btn.exportConfigTitle')}
+          onClick={exportConfig}
+        >
+          <ExportIcon />
         </button>
-        <button type="button" class="ghost" onClick={openSettings}>
-          {t('btn.settings')}
+        <button
+          type="button"
+          class="ghost icon-btn hero-icon-btn"
+          title={t('btn.settings')}
+          aria-label={t('btn.settings')}
+          onClick={openSettings}
+        >
+          <SettingsIcon />
         </button>
       </div>
     </header>

@@ -2,29 +2,29 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../i18n';
 import { usePanel } from '../context/PanelContext';
 
-interface CustomCommandFormProps {
+interface PresetCommandFormProps {
   showAddForm: boolean;
   onCloseAddForm: () => void;
 }
 
-export function CustomCommandForm({ showAddForm, onCloseAddForm }: CustomCommandFormProps) {
+export function PresetCommandForm({ showAddForm, onCloseAddForm }: PresetCommandFormProps) {
   const {
-    editingCustomId,
-    editingCustomDraft,
-    setEditingCustomDraft,
-    addCustomCommand,
-    updateCustomCommand,
-    cancelEditCustomCommand,
-    clearCustomFormDraft,
+    editingPresetKey,
+    editingPresetDraft,
+    setEditingPresetDraft,
+    addPresetCommand,
+    updatePresetCommand,
+    cancelEditPresetCommand,
+    clearPresetFormDraft,
   } = usePanel();
 
   const labelRef = useRef<HTMLInputElement>(null);
   const [addLabel, setAddLabel] = useState('');
   const [addCommand, setAddCommand] = useState('');
-  const isEditing = !!editingCustomId;
+  const isEditing = !!editingPresetKey;
   const showForm = isEditing || showAddForm;
-  const labelValue = isEditing ? (editingCustomDraft?.label ?? '') : addLabel;
-  const commandValue = isEditing ? (editingCustomDraft?.command ?? '') : addCommand;
+  const labelValue = isEditing ? (editingPresetDraft?.label ?? '') : addLabel;
+  const commandValue = isEditing ? (editingPresetDraft?.command ?? '') : addCommand;
 
   useEffect(() => {
     if (!showAddForm) {
@@ -41,7 +41,7 @@ export function CustomCommandForm({ showAddForm, onCloseAddForm }: CustomCommand
     if (isEditing) {
       labelRef.current.select();
     }
-  }, [showForm, isEditing, editingCustomId]);
+  }, [showForm, isEditing, editingPresetKey]);
 
   const handleCloseAddForm = () => {
     setAddLabel('');
@@ -56,12 +56,12 @@ export function CustomCommandForm({ showAddForm, onCloseAddForm }: CustomCommand
     if (!label || !command) {
       return;
     }
-    if (editingCustomId) {
-      updateCustomCommand(editingCustomId, label, command);
-      clearCustomFormDraft();
+    if (editingPresetKey) {
+      updatePresetCommand(editingPresetKey, label, command);
+      clearPresetFormDraft();
       return;
     }
-    addCustomCommand(label, command);
+    addPresetCommand(label, command);
     handleCloseAddForm();
   };
 
@@ -72,14 +72,14 @@ export function CustomCommandForm({ showAddForm, onCloseAddForm }: CustomCommand
   return (
     <form
       class={`custom-add-form custom-command-form${isEditing ? ' custom-edit-form' : ''}`}
-      id="custom-add-form"
+      id="preset-add-form"
       onSubmit={handleSubmit}
     >
       <div class={`custom-form-hint${isEditing ? ' custom-edit-hint' : ''}`}>
-        {isEditing ? t('custom.editHint') : t('custom.addHint')}
+        {isEditing ? t('preset.editHint') : t('preset.addHint')}
       </div>
       <input
-        id="custom-label"
+        id="preset-label"
         ref={labelRef}
         type="text"
         value={labelValue}
@@ -87,14 +87,14 @@ export function CustomCommandForm({ showAddForm, onCloseAddForm }: CustomCommand
         onInput={(e) => {
           const value = (e.target as HTMLInputElement).value;
           if (isEditing) {
-            setEditingCustomDraft({ label: value, command: commandValue });
+            setEditingPresetDraft({ label: value, command: commandValue });
           } else {
             setAddLabel(value);
           }
         }}
       />
       <input
-        id="custom-command"
+        id="preset-command"
         type="text"
         value={commandValue}
         placeholder={t('custom.commandPlaceholder')}
@@ -102,7 +102,7 @@ export function CustomCommandForm({ showAddForm, onCloseAddForm }: CustomCommand
         onInput={(e) => {
           const value = (e.target as HTMLInputElement).value;
           if (isEditing) {
-            setEditingCustomDraft({ label: labelValue, command: value });
+            setEditingPresetDraft({ label: labelValue, command: value });
           } else {
             setAddCommand(value);
           }
@@ -110,11 +110,11 @@ export function CustomCommandForm({ showAddForm, onCloseAddForm }: CustomCommand
       />
       <div class="custom-form-actions">
         {isEditing ? (
-          <button type="button" id="custom-cancel-edit" class="ghost" onClick={cancelEditCustomCommand}>
+          <button type="button" id="preset-cancel-edit" class="ghost" onClick={cancelEditPresetCommand}>
             {t('btn.cancel')}
           </button>
         ) : (
-          <button type="button" id="custom-cancel-add" class="ghost" onClick={handleCloseAddForm}>
+          <button type="button" id="preset-cancel-add" class="ghost" onClick={handleCloseAddForm}>
             {t('btn.cancel')}
           </button>
         )}

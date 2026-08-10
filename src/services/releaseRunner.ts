@@ -267,10 +267,15 @@ export class PanelShellSession {
     if (!this.proc) {
       return false;
     }
-    if (this.activeRun) {
-      this.activeRun.cancelRequested = true;
+    const active = this.activeRun;
+    if (active) {
+      active.cancelRequested = true;
     }
     this.writeStdin('\x03');
+    if (active) {
+      // Ctrl+C may stop the command before the tracked exit marker is printed.
+      this.finishActiveRun(130, true);
+    }
     return true;
   }
 
@@ -281,6 +286,17 @@ export class PanelShellSession {
     this.proc = undefined;
     this.activeRun = undefined;
     this.outputHandler = undefined;
+  }
+
+  private recoverBrokenShellPrompt(chunk: string): void {
+    if (!this.activeRun) {
+      return;
+    }
+    if (!/\bdquote>|\bquote>/.test(chunk)) {
+      return;
+    }
+    this.writeStdin('\x03\n');
+    this.finishActiveRun(1, false);
   }
 
   private async startShell(): Promise<void> {
@@ -320,6 +336,7 @@ export class PanelShellSession {
 
   private handleOutput(chunk: string, stream: 'stdout' | 'stderr'): void {
     this.outputHandler?.(chunk, stream);
+    this.recoverBrokenShellPrompt(chunk);
     if (!this.activeRun) {
       return;
     }
@@ -418,16 +435,22 @@ function buildInteractiveShellInvocation(shell: string): ShellInvocation {
 }
 
 function buildTrackedCommandScript(command: string, marker: string, shell: string): string {
+  const quotedMarker = marker.replace(/'/g, `'\"'\"'`);
   if (process.platform !== 'win32') {
-    return ['set +e', command, `printf '%s\\n' "${marker}$?"__"`].join('\n');
+    const shellBase = path.basename(shell).toLowerCase();
+    // Single-line scripts avoid interactive zsh/bash entering continuation prompts (dquote>).
+    if (shellBase.includes('zsh')) {
+      return `${command}; builtin print -r -- '${quotedMarker}'$?'\''__'\''\n`;
+    }
+    return `${command}; command printf '%s\\n' '${quotedMarker}'$?'\''__'\''\n`;
   }
 
   const shellBase = path.basename(shell).toLowerCase();
   if (shellBase.includes('powershell') || shellBase === 'pwsh.exe') {
-    return [command, `Write-Host '${marker}'$LASTEXITCODE'__'`].join('\n');
+    return `${command}; Write-Host '${quotedMarker}'$LASTEXITCODE'__'\n`;
   }
 
-  return [command, `echo ${marker}!ERRORLEVEL!__`].join('\r\n');
+  return `${command} & echo ${quotedMarker}!ERRORLEVEL!__\r\n`;
 }
 
 function decodeShellOutput(buf: Buffer): string {

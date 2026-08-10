@@ -8,6 +8,11 @@ import {
   buildCommandDefinition,
 } from '../services/commandCatalog';
 import { CustomCommandStore } from '../services/customCommandStore';
+import {
+  addManagedPresetCommand,
+  removeManagedPresetCommand,
+  updateManagedPresetCommand,
+} from '../services/presetCommandService';
 import { UiStateStore, defaultTerminalFold } from '../services/uiStateStore';
 import { buildOperatorProfile, ReleaseHistoryStore } from '../services/releaseHistoryStore';
 import { OssSyncService } from '../services/ossSyncService';
@@ -267,7 +272,7 @@ export class ReleasePanelController {
   }
 
   async addCustomCommand(label: string, command: string): Promise<PanelState> {
-    if (!this.customCommands) {
+    if (!this.ensureWorkspaceServices() || !this.customCommands) {
       this.notify('warn', t('toast.openWorkspace'));
       return this.buildEmptyState();
     }
@@ -276,6 +281,9 @@ export class ReleasePanelController {
       return this.buildState();
     }
     await this.customCommands.add(label, command);
+    if (this.uiState) {
+      await this.uiState.setGroupFold('custom', true);
+    }
     this.notify('info', t('toast.customSaved'));
     const state = await this.buildState();
     await this.onStateChanged?.(state);
@@ -283,7 +291,7 @@ export class ReleasePanelController {
   }
 
   async updateCustomCommand(customId: string, label: string, command: string): Promise<PanelState> {
-    if (!this.customCommands) {
+    if (!this.ensureWorkspaceServices() || !this.customCommands) {
       this.notify('warn', t('toast.openWorkspace'));
       return this.buildEmptyState();
     }
@@ -303,7 +311,7 @@ export class ReleasePanelController {
   }
 
   async removeCustomCommand(customId: string): Promise<PanelState> {
-    if (!this.customCommands) {
+    if (!this.ensureWorkspaceServices() || !this.customCommands) {
       return this.buildEmptyState();
     }
     const removed = await this.customCommands.remove(customId);
@@ -312,6 +320,63 @@ export class ReleasePanelController {
       return this.buildState();
     }
     this.notify('info', t('toast.customDeleted'));
+    const state = await this.buildState();
+    await this.onStateChanged?.(state);
+    return state;
+  }
+
+  async addPresetCommand(label: string, command: string): Promise<PanelState> {
+    const folder = this.ensureWorkspaceServices();
+    if (!folder) {
+      this.notify('warn', t('toast.openWorkspace'));
+      return this.buildEmptyState();
+    }
+    if (!label.trim() || !command.trim()) {
+      this.notify('warn', t('toast.fillPresetCommand'));
+      return this.buildState();
+    }
+    await addManagedPresetCommand(folder, label, command);
+    if (this.uiState) {
+      await this.uiState.setGroupFold('release', true);
+    }
+    this.notify('info', t('toast.presetSaved'));
+    const state = await this.buildState();
+    await this.onStateChanged?.(state);
+    return state;
+  }
+
+  async updatePresetCommand(presetKey: string, label: string, command: string): Promise<PanelState> {
+    const folder = this.ensureWorkspaceServices();
+    if (!folder) {
+      this.notify('warn', t('toast.openWorkspace'));
+      return this.buildEmptyState();
+    }
+    if (!label.trim() || !command.trim()) {
+      this.notify('warn', t('toast.fillPresetCommand'));
+      return this.buildState();
+    }
+    const updated = await updateManagedPresetCommand(folder, presetKey, label, command);
+    if (!updated) {
+      this.notify('warn', t('toast.presetNotFound'));
+      return this.buildState();
+    }
+    this.notify('info', t('toast.presetUpdated'));
+    const state = await this.buildState();
+    await this.onStateChanged?.(state);
+    return state;
+  }
+
+  async removePresetCommand(presetKey: string): Promise<PanelState> {
+    const folder = this.ensureWorkspaceServices();
+    if (!folder) {
+      return this.buildEmptyState();
+    }
+    const removed = await removeManagedPresetCommand(folder, presetKey);
+    if (!removed) {
+      this.notify('warn', t('toast.presetNotFound'));
+      return this.buildState();
+    }
+    this.notify('info', t('toast.presetDeleted'));
     const state = await this.buildState();
     await this.onStateChanged?.(state);
     return state;
@@ -437,9 +502,12 @@ export class ReleasePanelController {
       void this.startParallelTask(definition);
       return this.buildState();
     }
-    if (this.runningRecordId || this.panelShell.isRunning()) {
+    if (this.runningRecordId) {
       this.notify('warn', t('toast.runInProgress'));
       return this.buildState();
+    }
+    if (this.panelShell.isRunning()) {
+      this.panelShell.cancel();
     }
 
     const operator = await resolveOperator(folder, this.secrets);
@@ -502,7 +570,9 @@ export class ReleasePanelController {
       this.notify('error', message);
     }
 
-    return this.buildState();
+    const state = await this.buildState();
+    await this.onStateChanged?.(state);
+    return state;
   }
 
   openTerminal(): void {

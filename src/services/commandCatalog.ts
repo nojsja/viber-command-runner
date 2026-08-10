@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { t } from '../i18n';
 import { CustomCommandStore } from './customCommandStore';
+import {
+  readExternalPresetCommands,
+  readManagedPresetCommands,
+} from './presetCommandService';
 import { ReleaseCommandDefinition, CommandGroupDefinition } from '../types';
 
 function detectPlatform(label: string, command: string) {
@@ -124,7 +128,7 @@ export function buildCommandDefinition(
   key: string,
   label: string,
   command: string,
-  options?: { order?: number; groupId?: string; customId?: string; releaseType?: string },
+  options?: { order?: number; groupId?: string; customId?: string; presetKey?: string; releaseType?: string },
 ): ReleaseCommandDefinition {
   const trimmed = command.trim().replace(/;$/, '');
   return {
@@ -138,17 +142,26 @@ export function buildCommandDefinition(
     interactive: detectInteractive(label, trimmed),
     groupId: options?.groupId,
     customId: options?.customId,
+    presetKey: options?.presetKey,
   };
 }
 
 export function loadReleaseCommands(folder: vscode.WorkspaceFolder): ReleaseCommandDefinition[] {
-  const config = vscode.workspace.getConfiguration(undefined, folder.uri);
-  const raw = config.get<Record<string, string>>('command-runner.commands') ?? {};
+  const external = readExternalPresetCommands(folder);
+  const managed = readManagedPresetCommands(folder);
+  const managedKeys = new Set(Object.keys(managed));
+  const merged: Record<string, string> = { ...external, ...managed };
 
-  return Object.entries(raw)
-    .map(([label, command]) =>
-      buildCommandDefinition(label, label, command, { groupId: 'release' }),
-    )
+  return Object.entries(merged)
+    .map(([label, command]) => {
+      const isManaged = managedKeys.has(label);
+      return buildCommandDefinition(
+        isManaged ? `preset:${label}` : label,
+        label,
+        command,
+        { groupId: 'release', presetKey: isManaged ? label : undefined },
+      );
+    })
     .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label, 'zh-CN'));
 }
 

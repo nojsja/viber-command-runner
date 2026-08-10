@@ -53,3 +53,71 @@ export function CopyIcon() {
     </svg>
   );
 }
+
+export function PlusIcon() {
+  return (
+    <svg class="command-action-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M8 2.75a.75.75 0 0 1 .75.75V7h3.5a.75.75 0 0 1 0 1.5H8.75v3.5a.75.75 0 0 1-1.5 0V8.5H3.75a.75.75 0 0 1 0-1.5h3.5V3.5A.75.75 0 0 1 8 2.75z" />
+    </svg>
+  );
+}
+
+export function RefreshIcon() {
+  return (
+    <svg class="command-action-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.516l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.492.149A5.48 5.48 0 0 0 8 2.5Z"
+      />
+    </svg>
+  );
+}
+
+export function ImportIcon() {
+  return (
+    <svg class="command-action-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"
+      />
+      <path
+        fill="currentColor"
+        d="M7.25 7.689V1.5a.75.75 0 0 1 1.5 0v6.189l1.22-1.22a.75.75 0 1 1 1.06 1.06l-2.5 2.5a.75.75 0 0 1-1.06 0l-2.5-2.5a.75.75 0 1 1 1.06-1.06l1.22 1.22Z"
+      />
+    </svg>
+  );
+}
+
+export function ExportIcon() {
+  return (
+    <svg class="command-action-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"
+      />
+      <path
+        fill="currentColor"
+        d="M7.25 8.311V14.5a.75.75 0 0 0 1.5 0V8.311l1.22 1.22a.75.75 0 1 0 1.06-1.06l-2.5-2.5a.75.75 0 0 0-1.06 0l-2.5 2.5a.75.75 0 1 0 1.06 1.06l1.22-1.22Z"
+      />
+    </svg>
+  );
+}
+
+export function SettingsIcon() {
+  return (
+    <svg class="command-action-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        fill-rule="evenodd"
+        clip-rule="evenodd"
+        d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"
+      />
+      <path
+        fill="currentColor"
+        fill-rule="evenodd"
+        clip-rule="evenodd"
+        d="M8.66 1.227a.75.75 0 0 0-.32 0l-.66 1.11a.75.75 0 0 1-.64.37l-1.28.08a.75.75 0 0 0-.67.67l.08 1.28a.75.75 0 0 1-.37.64l-1.11.66a.75.75 0 0 0 0 .32l1.11.66a.75.75 0 0 1 .37.64l-.08 1.28a.75.75 0 0 0 .67.67l1.28.08a.75.75 0 0 1 .64.37l.66 1.11a.75.75 0 0 0 .32 0l.66-1.11a.75.75 0 0 1 .64-.37l1.28-.08a.75.75 0 0 0 .67-.67l-.08-1.28a.75.75 0 0 1 .37-.64l1.11-.66a.75.75 0 0 0 0-.32l-1.11-.66a.75.75 0 0 1-.37-.64l.08-1.28a.75.75 0 0 0-.67-.67l-1.28-.08a.75.75 0 0 1-.64-.37l-.66-1.11z"
+      />
+    </svg>
+  );
+}

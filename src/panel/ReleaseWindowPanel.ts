@@ -105,15 +105,27 @@ export class ReleaseWindowPanel {
         break;
       }
       case 'addCustomCommand': {
-        void this.controller.addCustomCommand(message.label, message.command);
+        await this.controller.addCustomCommand(message.label, message.command);
         break;
       }
       case 'updateCustomCommand': {
-        void this.controller.updateCustomCommand(message.customId, message.label, message.command);
+        await this.controller.updateCustomCommand(message.customId, message.label, message.command);
         break;
       }
       case 'removeCustomCommand': {
-        void this.controller.removeCustomCommand(message.customId);
+        await this.controller.removeCustomCommand(message.customId);
+        break;
+      }
+      case 'addPresetCommand': {
+        await this.controller.addPresetCommand(message.label, message.command);
+        break;
+      }
+      case 'updatePresetCommand': {
+        await this.controller.updatePresetCommand(message.presetKey, message.label, message.command);
+        break;
+      }
+      case 'removePresetCommand': {
+        await this.controller.removePresetCommand(message.presetKey);
         break;
       }
       case 'setGroupFold': {

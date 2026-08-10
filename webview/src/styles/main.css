@@ -72,20 +72,14 @@ body.window-mode .content-grid > * {
 .hero {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
-  align-items: flex-start;
+  gap: 12px;
+  align-items: center;
 }
 
 .hero h1 {
-  margin: 2px 0 0;
-  font-size: 22px;
-}
-
-.eyebrow {
-  color: var(--muted);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
 }
 
 .hero-actions {
@@ -93,6 +87,16 @@ body.window-mode .content-grid > * {
   flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
+}
+
+.hero-actions .hero-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  min-width: 28px;
+  min-height: 28px;
+  line-height: 0;
 }
 
 button {
@@ -711,10 +715,31 @@ body.window-mode .commands-panel > .adhoc-runner {
   list-style: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   font-weight: 600;
   user-select: none;
+}
+
+.command-group-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.command-group-toggle-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.command-group-toggle-actions .custom-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  min-width: 24px;
+  min-height: 24px;
+  line-height: 0;
 }
 
 .command-group-toggle::-webkit-details-marker {
@@ -781,38 +806,46 @@ body.window-mode .commands-panel > .adhoc-runner {
 
 .custom-add-form {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) auto;
   gap: 8px;
   margin-bottom: 10px;
 }
 
-.custom-add-form.custom-edit-form {
+.custom-add-form.custom-command-form {
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) auto;
   grid-template-areas:
     'hint hint hint'
     'label command actions';
-  border: 1px solid rgba(88, 166, 255, 0.35);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
+  background: rgba(127, 127, 127, 0.04);
+}
+
+.custom-add-form.custom-edit-form {
+  border-color: rgba(88, 166, 255, 0.35);
   background: rgba(88, 166, 255, 0.06);
 }
 
-.custom-edit-hint {
+.custom-form-hint {
   grid-area: hint;
   font-size: 11px;
-  color: var(--accent, #58a6ff);
+  color: var(--muted);
   margin-bottom: 2px;
 }
 
-.custom-add-form.custom-edit-form #custom-label {
+.custom-edit-hint {
+  color: var(--accent, #58a6ff);
+}
+
+.custom-add-form.custom-command-form #custom-label {
   grid-area: label;
 }
 
-.custom-add-form.custom-edit-form #custom-command {
+.custom-add-form.custom-command-form #custom-command {
   grid-area: command;
 }
 
-.custom-add-form.custom-edit-form .custom-form-actions {
+.custom-add-form.custom-command-form .custom-form-actions {
   grid-area: actions;
 }
 

@@ -12,6 +12,7 @@ export interface ReleaseCommandDefinition {
   interactive: boolean;
   groupId?: string;
   customId?: string;
+  presetKey?: string;
 }
 
 export interface CommandGroupDefinition {
@@ -77,6 +78,9 @@ export type PanelMessage =
   | { type: 'addCustomCommand'; label: string; command: string }
   | { type: 'updateCustomCommand'; customId: string; label: string; command: string }
   | { type: 'removeCustomCommand'; customId: string }
+  | { type: 'addPresetCommand'; label: string; command: string }
+  | { type: 'updatePresetCommand'; presetKey: string; label: string; command: string }
+  | { type: 'removePresetCommand'; presetKey: string }
   | { type: 'setGroupFold'; groupId: string; open: boolean }
   | { type: 'setParallelMode'; enabled: boolean }
   | { type: 'setTerminalFold'; target: 'sticky' | 'panel'; expanded: boolean }

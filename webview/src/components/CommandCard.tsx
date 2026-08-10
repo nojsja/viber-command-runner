@@ -20,8 +20,10 @@ export function CommandCard({ command }: CommandCardProps) {
     runCommand,
     copyCommand,
     startEditCustomCommand,
+    startEditPresetCommand,
     showConfirm,
     removeCustomCommand,
+    removePresetCommand,
     getTaskSessionsForCommand,
   } = usePanel();
 
@@ -34,16 +36,26 @@ export function CommandCard({ command }: CommandCardProps) {
   const sessions = panelState.parallelMode ? getTaskSessionsForCommand(command.key) : [];
 
   const handleRemove = async () => {
-    if (!command.customId) {
+    if (command.customId) {
+      const confirmed = await showConfirm(
+        t('custom.deleteConfirm', { label: command.label }),
+        t('btn.remove'),
+        t('btn.cancel'),
+      );
+      if (confirmed) {
+        removeCustomCommand(command.customId);
+      }
       return;
     }
-    const confirmed = await showConfirm(
-      t('custom.deleteConfirm', { label: command.label }),
-      t('btn.remove'),
-      t('btn.cancel'),
-    );
-    if (confirmed) {
-      removeCustomCommand(command.customId);
+    if (command.presetKey) {
+      const confirmed = await showConfirm(
+        t('preset.deleteConfirm', { label: command.label }),
+        t('btn.remove'),
+        t('btn.cancel'),
+      );
+      if (confirmed) {
+        removePresetCommand(command.presetKey);
+      }
     }
   };
 
@@ -83,6 +95,29 @@ export function CommandCard({ command }: CommandCardProps) {
               class="ghost remove-btn icon-btn"
               title={t('btn.removeTitle')}
               aria-label={t('btn.removeTitle')}
+              disabled={disabled}
+              onClick={() => void handleRemove()}
+            >
+              <TrashIcon />
+            </button>
+          </>
+        ) : command.presetKey ? (
+          <>
+            <button
+              type="button"
+              class="ghost edit-btn icon-btn"
+              title={t('btn.editPresetTitle')}
+              aria-label={t('btn.editPresetTitle')}
+              disabled={disabled}
+              onClick={() => startEditPresetCommand(command.presetKey!)}
+            >
+              <EditIcon />
+            </button>
+            <button
+              type="button"
+              class="ghost remove-btn icon-btn"
+              title={t('btn.removePresetTitle')}
+              aria-label={t('btn.removePresetTitle')}
               disabled={disabled}
               onClick={() => void handleRemove()}
             >
