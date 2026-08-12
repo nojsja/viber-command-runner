@@ -85,13 +85,6 @@ export function StickyTerminal() {
             </span>
           </button>
           <div class="terminal-sticky-actions">
-            <span
-              id="terminal-sticky-status"
-              class={stickyStatusClass}
-              title={stickyStatusText}
-            >
-              {stickyStatusText}
-            </span>
             <button
               id="btn-sticky-clear"
               type="button"
@@ -112,6 +105,13 @@ export function StickyTerminal() {
                 {t('btn.abort')}
               </button>
             ) : null}
+            <span
+              id="terminal-sticky-status"
+              class={stickyStatusClass}
+              title={stickyStatusText}
+            >
+              {stickyStatusText}
+            </span>
             <button
               id="btn-sticky-hide"
               type="button"

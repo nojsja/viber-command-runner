@@ -110,7 +110,6 @@ export function TaskTerminal({ session }: TaskTerminalProps) {
           </span>
         </button>
         <div class="command-task-terminal-actions">
-          <span class={`terminal-status ${statusClass}`}>{statusText}</span>
           <button
             type="button"
             class="ghost terminal-clear-btn icon-btn"
@@ -132,6 +131,9 @@ export function TaskTerminal({ session }: TaskTerminalProps) {
               {t('btn.abort')}
             </button>
           ) : null}
+          <span class={`terminal-status ${statusClass}`} title={statusText}>
+            {statusText}
+          </span>
         </div>
       </div>
       <div class="command-task-terminal-body">
