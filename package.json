@@ -51,11 +51,6 @@
         "category": "Viber Command Runner"
       },
       {
-        "command": "viberCommandRunner.openSettings",
-        "title": "Viber Command Runner: 打开扩展设置",
-        "category": "Viber Command Runner"
-      },
-      {
         "command": "viberCommandRunner.syncRemote",
         "title": "Viber Command Runner: 同步执行记录",
         "icon": "$(cloud-upload)",

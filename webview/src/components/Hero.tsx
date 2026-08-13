@@ -1,6 +1,6 @@
 import { t } from '../i18n';
 import { usePanel } from '../context/PanelContext';
-import { ExportIcon, ImportIcon, RefreshIcon, SettingsIcon } from './icons';
+import { ExportIcon, ImportIcon, RefreshIcon } from './icons';
 
 export function Hero() {
   const {
@@ -11,7 +11,6 @@ export function Hero() {
     refresh,
     importConfig,
     exportConfig,
-    openSettings,
     cancelRun,
   } = usePanel();
 
@@ -62,15 +61,6 @@ export function Hero() {
             onClick={exportConfig}
           >
             <ExportIcon />
-          </button>
-          <button
-            type="button"
-            class="ghost icon-btn hero-icon-btn"
-            title={t('btn.settings')}
-            aria-label={t('btn.settings')}
-            onClick={openSettings}
-          >
-            <SettingsIcon />
           </button>
         </div>
       </div>

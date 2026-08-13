@@ -5,8 +5,6 @@ import { migrateLegacyPresetCommands } from './services/presetCommandMigration';
 import { registerRemoteSyncProvider } from './services/remoteSyncProvider';
 import type { RemoteSyncProvider } from './services/remoteSyncProvider';
 
-const EXTENSION_SETTINGS_QUERY = '@ext:nojsja.viber-command-runner';
-
 async function migrateAllWorkspacePresetCommands(): Promise<void> {
   await Promise.all(
     (vscode.workspace.workspaceFolders ?? []).map((folder) => migrateLegacyPresetCommands(folder)),
@@ -27,9 +25,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<{
   const openPanel = () => {
     ReleaseWindowPanel.createOrShow(context.extensionUri, context.secrets);
   };
-
-  const openExtensionSettings = () =>
-    vscode.commands.executeCommand('workbench.action.openSettings', EXTENSION_SETTINGS_QUERY);
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
@@ -59,7 +54,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<{
       }
       await controller.syncRemote(true);
     }),
-    vscode.commands.registerCommand('viberCommandRunner.openSettings', openExtensionSettings),
   );
 
   return {

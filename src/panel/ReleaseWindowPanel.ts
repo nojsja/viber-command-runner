@@ -3,8 +3,6 @@ import { getUiLanguage, messageCatalog, t } from '../i18n';
 import { PanelMessage } from '../types';
 import { postExtensionMessage, ReleasePanelController } from './ReleasePanelController';
 
-const EXTENSION_SETTINGS_QUERY = '@ext:nojsja.viber-command-runner';
-
 export class ReleaseWindowPanel {
   public static readonly viewType = 'viberCommandRunner.window';
 
@@ -163,9 +161,6 @@ export class ReleaseWindowPanel {
       }
       case 'syncRemote':
         await this.loadAndPostState('sync');
-        break;
-      case 'openSettings':
-        await vscode.commands.executeCommand('workbench.action.openSettings', EXTENSION_SETTINGS_QUERY);
         break;
       case 'exportConfig':
         void this.controller.exportConfig();

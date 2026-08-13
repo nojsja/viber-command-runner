@@ -87,7 +87,6 @@ export type PanelMessage =
   | { type: 'refresh' }
   | { type: 'reloadWebview' }
   | { type: 'syncRemote' }
-  | { type: 'openSettings' }
   | { type: 'openTerminal' }
   | { type: 'clearTerminal'; recordId?: string }
   | { type: 'cancelRun'; recordId?: string }
