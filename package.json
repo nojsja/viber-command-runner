@@ -2,7 +2,7 @@
   "name": "viber-command-runner",
   "displayName": "Viber Command Runner",
   "description": "Command panel for VS Code: run workspace scripts with built-in terminal logs, run history, and pluggable remote sync.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "nojsja",
   "license": "MIT",
   "icon": "media/icon.png",
