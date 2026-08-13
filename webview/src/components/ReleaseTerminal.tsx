@@ -13,6 +13,7 @@ export function ReleaseTerminal() {
     terminalStatusClass,
     clearTerminal,
     cancelRun,
+    interruptTerminal,
     toggleTerminalFold,
     isTerminalExpanded,
     terminalPreview,
@@ -121,6 +122,8 @@ export function ReleaseTerminal() {
           outputRef={outputRef}
           onSurfaceClick={handleSurfaceClick}
           onInputSubmit={(value, input) => submitMainTerminalLine(value, input, 'panel')}
+          onInputInterrupt={() => interruptTerminal(undefined, inputRef.current ?? undefined)}
+          onInputClearScreen={() => clearTerminal()}
         />
       </div>
     </section>

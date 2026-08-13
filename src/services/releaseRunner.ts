@@ -181,12 +181,18 @@ interface ActiveShellRun {
   reject: (error: Error) => void;
 }
 
+const SHELL_SETTLE_QUIET_MS = 400;
+const SHELL_SETTLE_MAX_MS = 3000;
+
 /** Persistent interactive shell for the panel terminal (serial mode). */
 export class PanelShellSession {
   private proc: cp.ChildProcess | undefined;
   private activeRun: ActiveShellRun | undefined;
   private outputHandler: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined;
   private starting: Promise<void> | undefined;
+  private shellSettleChain: Promise<void> = Promise.resolve();
+  private lastOutputAt = 0;
+  private cancelEscalationTimers: NodeJS.Timeout[] = [];
 
   constructor(private readonly folder: vscode.WorkspaceFolder) {}
 
@@ -235,6 +241,8 @@ export class PanelShellSession {
     onFinished: (result: RunFinishedResult) => void,
   ): Promise<RunFinishedResult> {
     await this.ensureStarted(onOutput);
+    await this.shellSettleChain;
+    this.clearCancelEscalation();
     if (this.activeRun) {
       throw new Error(t('runner.taskAlreadyRunning'));
     }
@@ -271,21 +279,34 @@ export class PanelShellSession {
     if (active) {
       active.cancelRequested = true;
     }
-    this.writeStdin('\x03');
+    this.clearCancelEscalation();
+    this.signalRunningJob('SIGINT');
+    this.scheduleCancelEscalation();
     if (active) {
-      // Ctrl+C may stop the command before the tracked exit marker is printed.
+      // UI must not wait for the exit marker; the real interrupt is sent via signals.
       this.finishActiveRun(130, true);
     }
+    this.shellSettleChain = this.shellSettleChain.then(() => this.settleShellAfterInterrupt());
+    return true;
+  }
+
+  interrupt(): boolean {
+    if (!this.proc?.pid) {
+      return false;
+    }
+    this.signalRunningJob('SIGINT');
     return true;
   }
 
   dispose(): void {
+    this.clearCancelEscalation();
     if (this.proc?.pid) {
       killProcessTree(this.proc.pid, 'SIGTERM');
     }
     this.proc = undefined;
     this.activeRun = undefined;
     this.outputHandler = undefined;
+    this.shellSettleChain = Promise.resolve();
   }
 
   private recoverBrokenShellPrompt(chunk: string): void {
@@ -295,7 +316,7 @@ export class PanelShellSession {
     if (!/\bdquote>|\bquote>/.test(chunk)) {
       return;
     }
-    this.writeStdin('\x03\n');
+    this.signalRunningJob('SIGINT');
     this.finishActiveRun(1, false);
   }
 
@@ -335,6 +356,7 @@ export class PanelShellSession {
   }
 
   private handleOutput(chunk: string, stream: 'stdout' | 'stderr'): void {
+    this.lastOutputAt = Date.now();
     this.outputHandler?.(chunk, stream);
     this.recoverBrokenShellPrompt(chunk);
     if (!this.activeRun) {
@@ -382,6 +404,94 @@ export class PanelShellSession {
     run.onFinished(result);
     run.resolve(result);
   }
+
+  private async settleShellAfterInterrupt(): Promise<void> {
+    await delay(150);
+    if (!this.proc?.stdin?.writable) {
+      return;
+    }
+    // Wake the shell back to a prompt without sending fake Ctrl+C bytes on a pipe.
+    this.writeStdin('');
+    await this.waitForOutputQuiet(SHELL_SETTLE_QUIET_MS, SHELL_SETTLE_MAX_MS);
+  }
+
+  private signalRunningJob(signal: NodeJS.Signals): void {
+    if (!this.proc?.pid) {
+      return;
+    }
+    const shellPid = this.proc.pid;
+    if (process.platform === 'win32') {
+      for (const childPid of listDescendantPids(shellPid)) {
+        killProcessTree(childPid, signal);
+      }
+      return;
+    }
+
+    if (signal !== 'SIGKILL') {
+      try {
+        process.kill(-shellPid, signal);
+      } catch {
+        try {
+          process.kill(shellPid, signal);
+        } catch {
+          // Shell may already be gone.
+        }
+      }
+    }
+
+    for (const childPid of listDescendantPids(shellPid)) {
+      try {
+        process.kill(childPid, signal);
+      } catch {
+        // Child may already be gone.
+      }
+    }
+  }
+
+  private scheduleCancelEscalation(): void {
+    const shellPid = this.proc?.pid;
+    if (!shellPid) {
+      return;
+    }
+    this.cancelEscalationTimers.push(
+      setTimeout(() => {
+        if (this.proc?.pid === shellPid) {
+          this.signalRunningJob('SIGTERM');
+        }
+      }, 2000),
+      setTimeout(() => {
+        if (this.proc?.pid === shellPid) {
+          this.signalRunningJob('SIGKILL');
+        }
+      }, 5000),
+    );
+  }
+
+  private clearCancelEscalation(): void {
+    for (const timer of this.cancelEscalationTimers) {
+      clearTimeout(timer);
+    }
+    this.cancelEscalationTimers = [];
+  }
+
+  private waitForOutputQuiet(quietMs: number, maxWaitMs: number): Promise<void> {
+    const startedAt = Date.now();
+    return new Promise((resolve) => {
+      const check = () => {
+        const quietFor = Date.now() - this.lastOutputAt;
+        if (quietFor >= quietMs || Date.now() - startedAt >= maxWaitMs) {
+          resolve();
+          return;
+        }
+        setTimeout(check, 50);
+      };
+      check();
+    });
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 interface ShellInvocation {
@@ -490,6 +600,38 @@ function isCancelledExit(exitCode: number): boolean {
   return exitCode === 130 || exitCode === 143 || exitCode === 137;
 }
 
+function listChildPids(pid: number): number[] {
+  if (process.platform === 'win32') {
+    return [];
+  }
+  try {
+    const output = cp.execSync(`pgrep -P ${pid}`, { encoding: 'utf8' }).trim();
+    if (!output) {
+      return [];
+    }
+    return output
+      .split('\n')
+      .map((value) => Number.parseInt(value, 10))
+      .filter((value) => Number.isFinite(value) && value > 0);
+  } catch {
+    return [];
+  }
+}
+
+function listDescendantPids(pid: number): number[] {
+  const descendants: number[] = [];
+  const queue = listChildPids(pid);
+  while (queue.length > 0) {
+    const childPid = queue.shift();
+    if (childPid === undefined) {
+      continue;
+    }
+    descendants.push(childPid);
+    queue.push(...listChildPids(childPid));
+  }
+  return descendants;
+}
+
 function killProcessTree(pid: number, signal: NodeJS.Signals): void {
   if (process.platform === 'win32') {
     cp.exec(`taskkill /PID ${pid} /T /F`, () => undefined);
@@ -586,7 +728,7 @@ function resolveShellExecutable(): string {
 
 async function resolveCommandEnvironment(): Promise<NodeJS.ProcessEnv> {
   if (cachedShellEnv) {
-    return { ...cachedShellEnv };
+    return augmentTerminalEnvironment({ ...cachedShellEnv });
   }
 
   const shell = resolveShellExecutable();
@@ -606,7 +748,17 @@ async function resolveCommandEnvironment(): Promise<NodeJS.ProcessEnv> {
     cachedShellEnv = augmentPath(process.env);
   }
 
+  cachedShellEnv = augmentTerminalEnvironment(cachedShellEnv);
   return { ...cachedShellEnv };
+}
+
+function augmentTerminalEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...env,
+    // Pipe-backed shells are not TTYs; many CLI tools (clear, tput, ls --color) still need TERM.
+    TERM: env.TERM || 'xterm-256color',
+    COLORTERM: env.COLORTERM || 'truecolor',
+  };
 }
 
 function loadShellEnvironment(shell: string): Promise<NodeJS.ProcessEnv> {

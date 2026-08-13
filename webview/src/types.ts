@@ -92,6 +92,7 @@ export type PanelMessage =
   | { type: 'clearTerminal'; recordId?: string }
   | { type: 'cancelRun'; recordId?: string }
   | { type: 'terminalInput'; value: string; recordId?: string }
+  | { type: 'terminalInterrupt'; recordId?: string }
   | { type: 'exportConfig' }
   | { type: 'importConfig' }
   | { type: 'filter'; query: string };

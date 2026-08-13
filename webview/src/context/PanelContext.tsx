@@ -93,6 +93,7 @@ export interface PanelContextValue {
   setTerminalFold: (target: 'sticky' | 'panel', expanded: boolean) => void;
   clearTerminal: (recordId?: string) => void;
   cancelRun: (recordId?: string) => void;
+  interruptTerminal: (recordId?: string, sourceInput?: HTMLInputElement) => void;
   submitTerminalInput: (value: string, recordId?: string, sourceInput?: HTMLInputElement) => void;
   submitMainTerminalLine: (value: string, sourceInput?: HTMLInputElement, target?: 'panel' | 'sticky') => void;
   submitTaskTerminalLine: (recordId: string, value: string, sourceInput?: HTMLInputElement) => void;
@@ -309,6 +310,30 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
       if (sourceInput) {
         sourceInput.value = '';
       }
+    },
+    [postMessage],
+  );
+
+  const interruptTerminal = useCallback(
+    (recordId?: string, sourceInput?: HTMLInputElement) => {
+      if (recordId) {
+        setTaskOutputs((prev) => {
+          const existing = prev[recordId] ?? { buffer: '', hasStderr: false };
+          return {
+            ...prev,
+            [recordId]: {
+              ...existing,
+              buffer: `${existing.buffer}^C\n`,
+            },
+          };
+        });
+      } else {
+        setTerminalBuffer((prev) => `${prev}^C\n`);
+      }
+      if (sourceInput) {
+        sourceInput.value = '';
+      }
+      postMessage({ type: 'terminalInterrupt', recordId });
     },
     [postMessage],
   );
@@ -895,6 +920,7 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
     setTerminalFold,
     clearTerminal,
     cancelRun: (recordId) => postMessage({ type: 'cancelRun', recordId }),
+    interruptTerminal,
     submitTerminalInput,
     submitMainTerminalLine,
     submitTaskTerminalLine,

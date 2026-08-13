@@ -241,9 +241,34 @@ export class ReleasePanelController {
       return undefined;
     }
 
+    const trimmed = value.trim();
+    if (trimmed === 'clear' || trimmed === 'cls') {
+      this.onTerminalClear?.();
+      return undefined;
+    }
+
     this.panelShell.writeStdin(value);
     this.promptDetector.markResponded();
     this.onInteractivePromptDismiss?.();
+    return undefined;
+  }
+
+  async interruptTerminal(recordId?: string): Promise<PanelState | undefined> {
+    if (this.parallelMode) {
+      const targetId = recordId ?? this.interactiveRecordId;
+      if (targetId && this.parallelTasks.has(targetId)) {
+        await this.cancelParallelTask(targetId);
+        return this.buildState();
+      }
+      return undefined;
+    }
+
+    if (this.runningRecordId) {
+      return this.cancelRun();
+    }
+
+    await this.ensurePanelShell();
+    this.panelShell?.interrupt();
     return undefined;
   }
 
@@ -898,7 +923,9 @@ export class ReleasePanelController {
     const bundle = await this.store.load();
     const existing = bundle.records.find((item) => item.id === record.id);
     if (existing && existing.status !== 'running') {
-      this.runningRecordId = undefined;
+      if (this.runningRecordId === record.id) {
+        this.runningRecordId = undefined;
+      }
       await this.onStateChanged?.(await this.buildState());
       return;
     }

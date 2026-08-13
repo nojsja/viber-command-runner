@@ -13,6 +13,7 @@ export function StickyTerminal() {
     panelState,
     clearTerminal,
     cancelRun,
+    interruptTerminal,
     toggleTerminalFold,
     isTerminalExpanded,
     terminalPreview,
@@ -133,6 +134,8 @@ export function StickyTerminal() {
             outputRef={outputRef}
             onSurfaceClick={handleSurfaceClick}
             onInputSubmit={(value, input) => submitMainTerminalLine(value, input, 'sticky')}
+            onInputInterrupt={() => interruptTerminal(undefined, inputRef.current ?? undefined)}
+            onInputClearScreen={() => clearTerminal()}
           />
         </div>
       </div>

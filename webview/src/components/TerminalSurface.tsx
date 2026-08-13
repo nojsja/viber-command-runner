@@ -1,4 +1,5 @@
 import type { Ref } from 'preact';
+import { handleTerminalShortcut } from '../utils/terminal';
 
 interface TerminalSurfaceProps {
   surface: 'panel' | 'sticky' | 'task';
@@ -15,6 +16,8 @@ interface TerminalSurfaceProps {
   onInputFocus?: () => void;
   onInputBlur?: (event: FocusEvent) => void;
   onInputSubmit?: (value: string, input: HTMLInputElement) => void;
+  onInputInterrupt?: () => void;
+  onInputClearScreen?: () => void;
 }
 
 export function TerminalSurface({
@@ -32,6 +35,8 @@ export function TerminalSurface({
   onInputFocus,
   onInputBlur,
   onInputSubmit,
+  onInputInterrupt,
+  onInputClearScreen,
 }: TerminalSurfaceProps) {
   const outputId =
     surface === 'task' && recordId
@@ -53,14 +58,14 @@ export function TerminalSurface({
       return;
     }
     const input = event.currentTarget as HTMLInputElement;
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      onInputSubmit?.(input.value, input);
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      input.value = '';
-    }
+    handleTerminalShortcut(event, {
+      onSubmit: () => onInputSubmit?.(input.value, input),
+      onClearLine: () => {
+        input.value = '';
+      },
+      onInterrupt: onInputInterrupt,
+      onClearScreen: onInputClearScreen,
+    });
   };
 
   return (

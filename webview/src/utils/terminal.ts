@@ -119,3 +119,38 @@ export function terminalPreviewLine(buffer: string): string {
 export function isScrolledToBottom(node: HTMLElement, threshold = 12): boolean {
   return node.scrollHeight - node.scrollTop - node.clientHeight <= threshold;
 }
+
+export function handleTerminalShortcut(
+  event: KeyboardEvent,
+  handlers: {
+    onSubmit?: () => void;
+    onClearLine?: () => void;
+    onInterrupt?: () => void;
+    onClearScreen?: () => void;
+  },
+): boolean {
+  const mod = event.ctrlKey || event.metaKey;
+  const key = event.key.toLowerCase();
+
+  if (event.key === 'Enter' && handlers.onSubmit) {
+    event.preventDefault();
+    handlers.onSubmit();
+    return true;
+  }
+  if (event.key === 'Escape' && handlers.onClearLine) {
+    event.preventDefault();
+    handlers.onClearLine();
+    return true;
+  }
+  if (mod && key === 'c' && handlers.onInterrupt) {
+    event.preventDefault();
+    handlers.onInterrupt();
+    return true;
+  }
+  if (mod && key === 'l' && handlers.onClearScreen) {
+    event.preventDefault();
+    handlers.onClearScreen();
+    return true;
+  }
+  return false;
+}

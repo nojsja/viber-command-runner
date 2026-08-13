@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import { t } from '../i18n';
 import { usePanel } from '../context/PanelContext';
 import type { TaskSessionView } from '../types';
-import { detectTerminalPrompt, stripTrailingPromptLine } from '../utils/terminal';
+import { detectTerminalPrompt, handleTerminalShortcut, stripTrailingPromptLine } from '../utils/terminal';
 import { TerminalSurface } from './TerminalSurface';
 import { ClearIcon } from './icons';
 
@@ -18,6 +18,7 @@ export function TaskTerminal({ session }: TaskTerminalProps) {
     setTaskTerminalFold,
     clearTerminal,
     cancelRun,
+    interruptTerminal,
     submitTaskTerminalLine,
     setActiveTaskTerminalFocus,
     scrollTaskTerminalToBottom,
@@ -67,14 +68,14 @@ export function TaskTerminal({ session }: TaskTerminalProps) {
 
   const handleInputKeyDown = (event: KeyboardEvent) => {
     const input = event.currentTarget as HTMLInputElement;
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      submitTaskTerminalLine(recordId, input.value, input);
-    }
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      input.value = '';
-    }
+    handleTerminalShortcut(event, {
+      onSubmit: () => submitTaskTerminalLine(recordId, input.value, input),
+      onClearLine: () => {
+        input.value = '';
+      },
+      onInterrupt: () => interruptTerminal(recordId, input),
+      onClearScreen: () => clearTerminal(recordId),
+    });
   };
 
   const handleSurfaceClick = (event: MouseEvent) => {

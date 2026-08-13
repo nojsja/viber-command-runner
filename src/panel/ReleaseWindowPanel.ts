@@ -189,6 +189,14 @@ export class ReleaseWindowPanel {
         });
         break;
       }
+      case 'terminalInterrupt': {
+        void this.controller.interruptTerminal(message.recordId).then((nextState) => {
+          if (nextState) {
+            postExtensionMessage(this.panel.webview, { type: 'state', payload: nextState });
+          }
+        });
+        break;
+      }
       default:
         break;
     }
