@@ -8,7 +8,7 @@ VS Code / Cursor extension for running workspace build and script commands from 
 - Open the **command panel** in a full editor tab (not a narrow sidebar)
 - Command: `Viber Command Runner: Open Command Panel`
 - Local run history: time, branch, platform, operator, version
-- Optional OSS sync: pull on panel open, push after each run
+- Pluggable remote sync for run history (pull on panel open, push after each run)
 - Custom commands, instant commands, embedded terminal, and interactive prompts
 - Parallel mode with per-command terminals
 
@@ -45,11 +45,7 @@ cursor --install-extension viber-command-runner-0.1.0.vsix
 
 ```json
 {
-  "viberCommandRunner.uiLanguage": "en",
-  "viberCommandRunner.oss.enabled": true,
-  "viberCommandRunner.oss.region": "oss-cn-beijing",
-  "viberCommandRunner.oss.bucket": "your-bucket",
-  "viberCommandRunner.oss.objectKey": "viber/devtools/command-runner/history/global.json"
+  "viberCommandRunner.uiLanguage": "en"
 }
 ```
 
@@ -60,6 +56,29 @@ Operator (optional):
   "viberCommandRunner.operator": "Johnson"
 }
 ```
+
+## Remote sync API
+
+Other extensions can register a remote storage provider for run history sync:
+
+```typescript
+const runner = vscode.extensions.getExtension('nojsja.viber-command-runner');
+const api = await runner?.activate();
+
+api?.registerRemoteSyncProvider({
+  id: 'my-storage',
+  isEnabled: () => true,
+  async pull(context) {
+    // return ReleaseHistoryBundle from remote storage
+  },
+  async push(context, bundle) {
+    // upload bundle to remote storage, return ISO timestamp
+    return new Date().toISOString();
+  },
+});
+```
+
+When no provider is registered (or `isEnabled()` returns false), sync is a no-op and records stay local only.
 
 ## Local data
 

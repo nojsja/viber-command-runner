@@ -74,7 +74,7 @@ export interface PanelContextValue {
   terminalPreview: string;
   postMessage: VsCodeApi['postMessage'];
   refresh: () => void;
-  syncOss: () => void;
+  syncRemote: () => void;
   openSettings: () => void;
   openTerminal: () => void;
   exportConfig: () => void;
@@ -907,7 +907,7 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
     terminalPreview,
     postMessage,
     refresh: () => postMessage({ type: 'refresh' }),
-    syncOss: () => postMessage({ type: 'syncOss' }),
+    syncRemote: () => postMessage({ type: 'syncRemote' }),
     openSettings: () => postMessage({ type: 'openSettings' }),
     openTerminal: () => postMessage({ type: 'openTerminal' }),
     exportConfig: () => postMessage({ type: 'exportConfig' }),

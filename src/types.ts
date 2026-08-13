@@ -86,7 +86,7 @@ export type PanelMessage =
   | { type: 'setTerminalFold'; target: 'sticky' | 'panel'; expanded: boolean }
   | { type: 'refresh' }
   | { type: 'reloadWebview' }
-  | { type: 'syncOss' }
+  | { type: 'syncRemote' }
   | { type: 'openSettings' }
   | { type: 'openTerminal' }
   | { type: 'clearTerminal'; recordId?: string }
@@ -123,8 +123,8 @@ export interface PanelState {
   branch: string;
   appVersion?: string;
   appBuild?: string;
-  ossEnabled: boolean;
-  ossSyncedAt?: string;
+  remoteSyncEnabled: boolean;
+  remoteSyncedAt?: string;
   syncing: boolean;
   runningRecordId?: string;
   runningRecordIds: string[];

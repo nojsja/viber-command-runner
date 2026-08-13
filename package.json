@@ -1,7 +1,7 @@
 {
   "name": "viber-command-runner",
   "displayName": "Viber Command Runner",
-  "description": "Command panel for VS Code: run workspace scripts with built-in terminal logs, run history, and optional OSS sync.",
+  "description": "Command panel for VS Code: run workspace scripts with built-in terminal logs, run history, and pluggable remote sync.",
   "version": "0.2.0",
   "publisher": "nojsja",
   "license": "MIT",
@@ -56,8 +56,8 @@
         "category": "Viber Command Runner"
       },
       {
-        "command": "viberCommandRunner.syncOss",
-        "title": "Viber Command Runner: 同步 OSS 执行记录",
+        "command": "viberCommandRunner.syncRemote",
+        "title": "Viber Command Runner: 同步执行记录",
         "icon": "$(cloud-upload)",
         "category": "Viber Command Runner"
       }
@@ -81,12 +81,7 @@
             "viberCommandRunner"
           ],
           "default": "command-runner",
-          "description": "命令来源：读取 workspace 的 command-runner.commands 或 viberCommandRunner.commands"
-        },
-        "viberCommandRunner.commands": {
-          "type": "object",
-          "default": {},
-          "description": "自定义命令映射（label -> shell command）"
+          "description": "命令来源：读取 workspace 的 command-runner.commands 或面板内管理的预设命令"
         },
         "viberCommandRunner.terminalName": {
           "type": "string",
@@ -97,31 +92,6 @@
           "type": "string",
           "default": "",
           "description": "Optional shell executable for embedded command runner (e.g. /bin/zsh). Leave empty to auto-detect from $SHELL."
-        },
-        "viberCommandRunner.oss.enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "是否启用 OSS 执行记录同步"
-        },
-        "viberCommandRunner.oss.region": {
-          "type": "string",
-          "default": "oss-cn-beijing",
-          "description": "阿里云 OSS Region"
-        },
-        "viberCommandRunner.oss.bucket": {
-          "type": "string",
-          "default": "",
-          "description": "OSS Bucket 名称"
-        },
-        "viberCommandRunner.oss.objectKey": {
-          "type": "string",
-          "default": "viber/devtools/command-runner/history/global.json",
-          "description": "执行记录 JSON 在 OSS 上的 Object Key"
-        },
-        "viberCommandRunner.oss.endpoint": {
-          "type": "string",
-          "default": "",
-          "description": "可选自定义 Endpoint，留空则根据 region 自动推断"
         },
         "viberCommandRunner.operator": {
           "type": "string",
@@ -144,7 +114,7 @@
         "viberCommandRunner.silentNotifications": {
           "type": "boolean",
           "default": false,
-          "description": "Suppress VS Code native notification sounds/toasts (e.g. OSS setup prompts). Panel inline toasts are always shown. / 静默 VS Code 系统通知（含音效）；面板内提示仍会显示"
+          "description": "Suppress VS Code native notification sounds/toasts. Panel inline toasts are always shown. / 静默 VS Code 系统通知（含音效）；面板内提示仍会显示"
         }
       }
     }
@@ -165,7 +135,6 @@
     "typescript": "^5.4.0"
   },
   "dependencies": {
-    "ali-oss": "^6.21.0",
     "node-pty": "^1.1.0"
   }
 }

@@ -9,15 +9,15 @@ export function MetaGrid() {
     return <section class="meta-grid" ref={metaGridRef} />;
   }
 
-  const ossValue = panelState.ossEnabled
-    ? panelState.ossSyncedAt
-      ? t('meta.ossSynced', { time: formatTime(panelState.ossSyncedAt) })
-      : t('meta.ossEnabled')
-    : t('meta.ossDisabled');
+  const remoteSyncValue = panelState.remoteSyncEnabled
+    ? panelState.remoteSyncedAt
+      ? t('meta.remoteSynced', { time: formatTime(panelState.remoteSyncedAt) })
+      : t('meta.remoteSyncEnabled')
+    : t('meta.remoteSyncDisabled');
 
   const items = [
     { label: t('meta.branch'), value: panelState.branch },
-    { label: t('meta.oss'), value: ossValue },
+    { label: t('meta.remoteSync'), value: remoteSyncValue },
   ];
 
   return (

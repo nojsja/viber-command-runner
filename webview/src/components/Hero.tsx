@@ -7,7 +7,7 @@ export function Hero() {
     showStopButtons,
     clearTerminal,
     openTerminal,
-    syncOss,
+    syncRemote,
     refresh,
     importConfig,
     exportConfig,
@@ -32,8 +32,8 @@ export function Hero() {
         <button type="button" class="ghost" onClick={openTerminal}>
           {t('btn.externalTerminal')}
         </button>
-        <button type="button" class="ghost" onClick={syncOss}>
-          {t('btn.syncOss')}
+        <button type="button" class="ghost" onClick={syncRemote}>
+          {t('btn.syncRemote')}
         </button>
         <div class="hero-icon-group">
           <button

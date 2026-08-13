@@ -4,8 +4,8 @@ import * as vscode from 'vscode';
 import { getExtensionVersion } from '../extensionMeta';
 import { t } from '../i18n';
 import { CustomCommandStore, StoredCustomCommand } from './customCommandStore';
+import { PresetCommandStore } from './presetCommandStore';
 import { TerminalFoldState, UiStateStore } from './uiStateStore';
-import { readOssCredentials, writeOssCredentials } from './ossSyncService';
 
 export const CONFIG_BUNDLE_VERSION = 1;
 export const CONFIG_BUNDLE_MIN_VERSION = 1;
@@ -19,36 +19,17 @@ const KNOWN_SETTINGS_KEYS = [
   'operator',
   'uiLanguage',
   'silentNotifications',
-  'oss',
-] as const;
-
-const KNOWN_OSS_KEYS = [
-  'enabled',
-  'region',
-  'bucket',
-  'objectKey',
-  'endpoint',
-  'accessKeyId',
-  'accessKeySecret',
 ] as const;
 
 export interface RunnerConfigSettings {
   commandsSource?: string;
+  /** @deprecated Legacy import only; preset commands are stored in preset-commands.json */
   commands?: Record<string, string>;
   terminalName?: string;
   shellPath?: string;
   operator?: string;
   uiLanguage?: string;
   silentNotifications?: boolean;
-  oss?: {
-    enabled?: boolean;
-    region?: string;
-    bucket?: string;
-    objectKey?: string;
-    endpoint?: string;
-    accessKeyId?: string;
-    accessKeySecret?: string;
-  };
 }
 
 export interface RunnerConfigBundle {
@@ -56,6 +37,7 @@ export interface RunnerConfigBundle {
   extensionVersion?: string;
   exportedAt: string;
   customCommands?: StoredCustomCommand[];
+  presetCommands?: Record<string, string>;
   uiState?: {
     groupFold?: Record<string, boolean>;
     terminalFold?: TerminalFoldState;
@@ -72,23 +54,21 @@ export interface ConfigBundleParseResult {
 export async function buildConfigBundle(
   folder: vscode.WorkspaceFolder,
   customCommands: CustomCommandStore,
+  presetCommands: PresetCommandStore,
   uiState: UiStateStore,
   secrets: vscode.SecretStorage,
 ): Promise<RunnerConfigBundle> {
   const commands = await customCommands.load();
+  const presets = await presetCommands.load();
   const ui = await uiState.load();
   const settings = readWorkspaceSettings(folder);
-  const credentials = await readOssCredentials(secrets);
-  if (settings.oss) {
-    settings.oss.accessKeyId = credentials.accessKeyId;
-    settings.oss.accessKeySecret = credentials.accessKeySecret;
-  }
 
   return {
     version: CONFIG_BUNDLE_VERSION,
     extensionVersion: getExtensionVersion(),
     exportedAt: new Date().toISOString(),
     customCommands: commands,
+    presetCommands: presets,
     uiState: {
       groupFold: { ...ui.groupFold },
       terminalFold: { ...ui.terminalFold },
@@ -101,12 +81,19 @@ export async function buildConfigBundle(
 export async function applyConfigBundle(
   folder: vscode.WorkspaceFolder,
   customCommands: CustomCommandStore,
+  presetCommands: PresetCommandStore,
   uiState: UiStateStore,
   secrets: vscode.SecretStorage,
   bundle: RunnerConfigBundle,
 ): Promise<void> {
   if (bundle.customCommands) {
     await customCommands.replaceAll(bundle.customCommands);
+  }
+
+  if (bundle.presetCommands) {
+    await presetCommands.replaceAll(bundle.presetCommands);
+  } else if (bundle.settings?.commands) {
+    await presetCommands.replaceAll(bundle.settings.commands);
   }
 
   if (bundle.uiState) {
@@ -156,7 +143,7 @@ export function parseConfigBundle(raw: string): ConfigBundleParseResult {
   }
 
   const bundle = normalizeConfigBundle(record, version);
-  if (!bundle.customCommands && !bundle.uiState && !bundle.settings) {
+  if (!bundle.customCommands && !bundle.presetCommands && !bundle.uiState && !bundle.settings) {
     throw new Error(t('config.importEmpty'));
   }
 
@@ -228,6 +215,13 @@ function normalizeConfigBundle(record: Record<string, unknown>, version: number)
     bundle.customCommands = normalizeImportedCustomCommands(record.customCommands);
   }
 
+  if (record.presetCommands && typeof record.presetCommands === 'object' && !Array.isArray(record.presetCommands)) {
+    const presetCommands = readStringRecord(record.presetCommands);
+    if (presetCommands) {
+      bundle.presetCommands = presetCommands;
+    }
+  }
+
   if (record.uiState && typeof record.uiState === 'object' && !Array.isArray(record.uiState)) {
     const uiState = normalizeUiState(record.uiState as Record<string, unknown>);
     if (uiState) {
@@ -289,14 +283,6 @@ function normalizeSettings(raw: Record<string, unknown>): RunnerConfigSettings |
       continue;
     }
 
-    if (key === 'oss') {
-      const oss = normalizeOssSettings(raw.oss);
-      if (oss) {
-        settings.oss = oss;
-      }
-      continue;
-    }
-
     if (key === 'commands') {
       const commands = readStringRecord(raw.commands);
       if (commands) {
@@ -322,51 +308,15 @@ function normalizeSettings(raw: Record<string, unknown>): RunnerConfigSettings |
   return Object.keys(settings).length > 0 ? settings : undefined;
 }
 
-function normalizeOssSettings(raw: unknown): RunnerConfigSettings['oss'] | undefined {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return undefined;
-  }
-
-  const ossRaw = raw as Record<string, unknown>;
-  const oss: NonNullable<RunnerConfigSettings['oss']> = {};
-
-  for (const key of KNOWN_OSS_KEYS) {
-    if (!(key in ossRaw)) {
-      continue;
-    }
-    if (key === 'enabled') {
-      const value = readBoolean(ossRaw.enabled);
-      if (value !== undefined) {
-        oss.enabled = value;
-      }
-      continue;
-    }
-    const value = readString(ossRaw[key]);
-    if (value !== undefined) {
-      oss[key] = value;
-    }
-  }
-
-  return Object.keys(oss).length > 0 ? oss : undefined;
-}
-
 function readWorkspaceSettings(folder: vscode.WorkspaceFolder): RunnerConfigSettings {
   const config = vscode.workspace.getConfiguration('viberCommandRunner', folder.uri);
   return {
     commandsSource: config.get<string>('commandsSource'),
-    commands: config.get<Record<string, string>>('commands'),
     terminalName: config.get<string>('terminalName'),
     shellPath: config.get<string>('shellPath'),
     operator: config.get<string>('operator'),
     uiLanguage: config.get<string>('uiLanguage'),
     silentNotifications: config.get<boolean>('silentNotifications'),
-    oss: {
-      enabled: config.get<boolean>('oss.enabled'),
-      region: config.get<string>('oss.region'),
-      bucket: config.get<string>('oss.bucket'),
-      objectKey: config.get<string>('oss.objectKey'),
-      endpoint: config.get<string>('oss.endpoint'),
-    },
   };
 }
 
@@ -380,9 +330,6 @@ async function applyWorkspaceSettings(
 
   if (settings.commandsSource !== undefined) {
     await config.update('commandsSource', settings.commandsSource, target);
-  }
-  if (settings.commands !== undefined) {
-    await config.update('commands', settings.commands, target);
   }
   if (settings.terminalName !== undefined) {
     await config.update('terminalName', settings.terminalName, target);
@@ -398,29 +345,6 @@ async function applyWorkspaceSettings(
   }
   if (settings.silentNotifications !== undefined) {
     await config.update('silentNotifications', settings.silentNotifications, target);
-  }
-
-  if (settings.oss) {
-    await writeOssCredentials(secrets, {
-      accessKeyId: settings.oss.accessKeyId,
-      accessKeySecret: settings.oss.accessKeySecret,
-    });
-
-    if (settings.oss.enabled !== undefined) {
-      await config.update('oss.enabled', settings.oss.enabled, target);
-    }
-    if (settings.oss.region !== undefined) {
-      await config.update('oss.region', settings.oss.region, target);
-    }
-    if (settings.oss.bucket !== undefined) {
-      await config.update('oss.bucket', settings.oss.bucket, target);
-    }
-    if (settings.oss.objectKey !== undefined) {
-      await config.update('oss.objectKey', settings.oss.objectKey, target);
-    }
-    if (settings.oss.endpoint !== undefined) {
-      await config.update('oss.endpoint', settings.oss.endpoint, target);
-    }
   }
 }
 

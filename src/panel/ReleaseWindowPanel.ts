@@ -3,6 +3,8 @@ import { getUiLanguage, messageCatalog, t } from '../i18n';
 import { PanelMessage } from '../types';
 import { postExtensionMessage, ReleasePanelController } from './ReleasePanelController';
 
+const EXTENSION_SETTINGS_QUERY = '@ext:nojsja.viber-command-runner';
+
 export class ReleaseWindowPanel {
   public static readonly viewType = 'viberCommandRunner.window';
 
@@ -159,11 +161,11 @@ export class ReleaseWindowPanel {
         });
         break;
       }
-      case 'syncOss':
+      case 'syncRemote':
         await this.loadAndPostState('sync');
         break;
       case 'openSettings':
-        await vscode.commands.executeCommand('workbench.action.openSettings', 'viberCommandRunner');
+        await vscode.commands.executeCommand('workbench.action.openSettings', EXTENSION_SETTINGS_QUERY);
         break;
       case 'exportConfig':
         void this.controller.exportConfig();
@@ -215,25 +217,25 @@ export class ReleaseWindowPanel {
     postExtensionMessage(this.panel.webview, { type: 'loading', active: true, messageKey });
     try {
       if (mode === 'sync') {
-        const state = await this.controller.syncOss(true);
+        const state = await this.controller.syncRemote(true);
         postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
         return;
       }
 
-      const syncOss = mode === 'refresh';
-      const state = await this.controller.bootstrap(syncOss);
+      const syncRemote = mode === 'refresh';
+      const state = await this.controller.bootstrap(syncRemote);
       postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
 
       if (mode === 'initial') {
-        void this.backgroundSyncOss();
+        void this.backgroundSyncRemote();
       }
     } finally {
       postExtensionMessage(this.panel.webview, { type: 'loading', active: false });
     }
   }
 
-  private async backgroundSyncOss(): Promise<void> {
-    const state = await this.controller.syncOss({ quiet: true, interactive: false });
+  private async backgroundSyncRemote(): Promise<void> {
+    const state = await this.controller.syncRemote({ quiet: true, interactive: false });
     postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
   }
 

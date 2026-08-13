@@ -8,6 +8,7 @@ import {
   buildCommandDefinition,
 } from '../services/commandCatalog';
 import { CustomCommandStore } from '../services/customCommandStore';
+import { PresetCommandStore } from '../services/presetCommandStore';
 import {
   addManagedPresetCommand,
   removeManagedPresetCommand,
@@ -15,7 +16,7 @@ import {
 } from '../services/presetCommandService';
 import { UiStateStore, defaultTerminalFold } from '../services/uiStateStore';
 import { buildOperatorProfile, ReleaseHistoryStore } from '../services/releaseHistoryStore';
-import { OssSyncService } from '../services/ossSyncService';
+import { RemoteSyncService } from '../services/remoteSyncService';
 import {
   readGitBranch,
   readPubspecVersion,
@@ -55,16 +56,17 @@ export class ReleasePanelController {
   private folder: vscode.WorkspaceFolder | undefined;
   private store: ReleaseHistoryStore | undefined;
   private customCommands: CustomCommandStore | undefined;
+  private presetCommands: PresetCommandStore | undefined;
   private uiState: UiStateStore | undefined;
   private panelShell: PanelShellSession | undefined;
-  private oss: OssSyncService | undefined;
+  private remoteSync: RemoteSyncService | undefined;
   private syncing = false;
   private runningRecordId: string | undefined;
   private parallelMode = false;
   private taskSessions: TaskSessionView[] = [];
   private parallelTasks = new Map<string, ParallelTaskContext>();
   private interactiveRecordId: string | undefined;
-  private ossSyncedAt: string | undefined;
+  private remoteSyncedAt: string | undefined;
   private promptDetector = new InteractivePromptDetector();
 
   constructor(private readonly secrets: vscode.SecretStorage) {}
@@ -104,7 +106,7 @@ export class ReleasePanelController {
     return state;
   }
 
-  async syncOss(
+  async syncRemote(
     options: boolean | { showToast?: boolean; quiet?: boolean; interactive?: boolean } = {},
   ): Promise<PanelState> {
     const opts = typeof options === 'boolean' ? { showToast: options } : options;
@@ -121,21 +123,22 @@ export class ReleasePanelController {
     this.syncing = true;
     const syncOptions = { interactive };
     try {
-      const pulled = await this.oss!.syncFromRemote(this.store!, syncOptions);
+      const pulled = await this.remoteSync!.syncFromRemote(this.store!, syncOptions);
       if (pulled) {
-        this.ossSyncedAt = pulled.syncedAt;
+        this.remoteSyncedAt = pulled.syncedAt;
       }
-      const pushedAt = await this.oss!.syncToRemote(this.store!, syncOptions);
+      const pushedAt = await this.remoteSync!.syncToRemote(this.store!, syncOptions);
       if (pushedAt) {
-        this.ossSyncedAt = pushedAt;
+        this.remoteSyncedAt = pushedAt;
       }
       if (opts.showToast) {
-        this.notify('info', this.oss!.isEnabled() ? t('toast.ossSynced') : t('toast.ossDisabled'));
+        const enabled = await this.remoteSync!.isEnabled();
+        this.notify('info', enabled ? t('toast.remoteSynced') : t('toast.remoteSyncDisabled'));
       }
     } catch (error) {
       if (!quiet) {
         const message = error instanceof Error ? error.message : String(error);
-        this.notify('error', t('toast.ossSyncFailed', { message }));
+        this.notify('error', t('toast.remoteSyncFailed', { message }));
       }
     } finally {
       this.syncing = false;
@@ -145,12 +148,12 @@ export class ReleasePanelController {
     return state;
   }
 
-  async bootstrap(syncOss: boolean): Promise<PanelState> {
+  async bootstrap(syncRemote: boolean): Promise<PanelState> {
     if (!this.ensureWorkspaceServices()) {
       return this.buildEmptyState();
     }
-    if (syncOss && this.oss!.isEnabled()) {
-      await this.syncOss({ quiet: true, interactive: false });
+    if (syncRemote && (await this.remoteSync!.isEnabled())) {
+      await this.syncRemote({ quiet: true, interactive: false });
     } else {
       await this.store!.load();
     }
@@ -360,7 +363,7 @@ export class ReleasePanelController {
       this.notify('warn', t('toast.fillPresetCommand'));
       return this.buildState();
     }
-    await addManagedPresetCommand(folder, label, command);
+    await addManagedPresetCommand(folder, this.presetCommands!, label, command);
     if (this.uiState) {
       await this.uiState.setGroupFold('release', true);
     }
@@ -380,7 +383,7 @@ export class ReleasePanelController {
       this.notify('warn', t('toast.fillPresetCommand'));
       return this.buildState();
     }
-    const updated = await updateManagedPresetCommand(folder, presetKey, label, command);
+    const updated = await updateManagedPresetCommand(folder, this.presetCommands!, presetKey, label, command);
     if (!updated) {
       this.notify('warn', t('toast.presetNotFound'));
       return this.buildState();
@@ -396,7 +399,7 @@ export class ReleasePanelController {
     if (!folder) {
       return this.buildEmptyState();
     }
-    const removed = await removeManagedPresetCommand(folder, presetKey);
+    const removed = await removeManagedPresetCommand(folder, this.presetCommands!, presetKey);
     if (!removed) {
       this.notify('warn', t('toast.presetNotFound'));
       return this.buildState();
@@ -446,13 +449,13 @@ export class ReleasePanelController {
 
   async exportConfig(): Promise<PanelState> {
     const folder = this.ensureWorkspaceServices();
-    if (!folder || !this.customCommands || !this.uiState) {
+    if (!folder || !this.customCommands || !this.presetCommands || !this.uiState) {
       this.notify('warn', t('toast.openWorkspace'));
       return this.buildEmptyState();
     }
 
     try {
-      const bundle = await buildConfigBundle(folder, this.customCommands, this.uiState, this.secrets);
+      const bundle = await buildConfigBundle(folder, this.customCommands, this.presetCommands, this.uiState, this.secrets);
       const savedPath = await exportConfigToFile(folder, bundle);
       if (!savedPath) {
         this.notify('info', t('config.exportCancelled'));
@@ -469,7 +472,7 @@ export class ReleasePanelController {
 
   async importConfig(): Promise<PanelState> {
     const folder = this.ensureWorkspaceServices();
-    if (!folder || !this.customCommands || !this.uiState) {
+    if (!folder || !this.customCommands || !this.presetCommands || !this.uiState) {
       this.notify('warn', t('toast.openWorkspace'));
       return this.buildEmptyState();
     }
@@ -501,7 +504,7 @@ export class ReleasePanelController {
         return this.buildState();
       }
 
-      await applyConfigBundle(folder, this.customCommands, this.uiState, this.secrets, bundle);
+      await applyConfigBundle(folder, this.customCommands, this.presetCommands, this.uiState, this.secrets, bundle);
       this.parallelMode = await this.uiState.getParallelMode();
       if (warnings.length > 0) {
         this.notify('warn', warnings.join(' '));
@@ -519,7 +522,7 @@ export class ReleasePanelController {
 
   private async executeDefinition(definition: ReleaseCommandDefinition): Promise<PanelState> {
     const folder = this.ensureWorkspaceServices();
-    if (!folder || !this.store || !this.panelShell || !this.oss) {
+    if (!folder || !this.store || !this.panelShell || !this.remoteSync) {
       this.notify('warn', t('toast.openWorkspace'));
       return this.buildEmptyState();
     }
@@ -705,7 +708,7 @@ export class ReleasePanelController {
 
   private async startParallelTask(definition: ReleaseCommandDefinition): Promise<void> {
     const folder = this.ensureWorkspaceServices();
-    if (!folder || !this.store || !this.oss) {
+    if (!folder || !this.store || !this.remoteSync) {
       this.notify('warn', t('toast.openWorkspace'));
       return;
     }
@@ -841,7 +844,7 @@ export class ReleasePanelController {
     record: ReleaseRecord,
     status: { status: ReleaseStatus; exitCode: number },
   ): Promise<void> {
-    if (!this.store || !this.oss) {
+    if (!this.store || !this.remoteSync) {
       return;
     }
 
@@ -867,12 +870,12 @@ export class ReleasePanelController {
     await this.store.upsertRecord(finished);
     this.updateTaskSession(record.id, status.status, status.exitCode);
 
-    if (this.oss.isEnabled()) {
+    if (await this.remoteSync.isEnabled()) {
       try {
-        this.ossSyncedAt = await this.oss.syncToRemote(this.store);
+        this.remoteSyncedAt = await this.remoteSync.syncToRemote(this.store);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.notify('warn', t('toast.ossUploadFailed', { message }));
+        this.notify('warn', t('toast.remoteUploadFailed', { message }));
       }
     }
 
@@ -916,7 +919,7 @@ export class ReleasePanelController {
     record: ReleaseRecord,
     status: { status: ReleaseStatus; exitCode: number },
   ): Promise<void> {
-    if (!this.store || !this.oss) {
+    if (!this.store || !this.remoteSync) {
       return;
     }
 
@@ -938,12 +941,12 @@ export class ReleasePanelController {
     };
     await this.store.upsertRecord(finished);
     this.runningRecordId = undefined;
-    if (this.oss.isEnabled()) {
+    if (await this.remoteSync.isEnabled()) {
       try {
-        this.ossSyncedAt = await this.oss.syncToRemote(this.store);
+        this.remoteSyncedAt = await this.remoteSync.syncToRemote(this.store);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        this.notify('warn', t('toast.ossUploadFailed', { message }));
+        this.notify('warn', t('toast.remoteUploadFailed', { message }));
       }
     }
     if (status.status === 'success') {
@@ -991,26 +994,27 @@ export class ReleasePanelController {
       this.folder = folder;
       this.store = new ReleaseHistoryStore(folder);
       this.customCommands = new CustomCommandStore(folder);
+      this.presetCommands = new PresetCommandStore(folder);
       this.uiState = new UiStateStore(folder);
       this.panelShell = new PanelShellSession(folder);
-      this.oss = new OssSyncService(folder, this.secrets);
+      this.remoteSync = new RemoteSyncService(folder, this.secrets);
     }
     return folder;
   }
 
   private async loadCommandGroups() {
     const folder = this.ensureWorkspaceServices();
-    if (!folder || !this.customCommands) {
+    if (!folder || !this.customCommands || !this.presetCommands) {
       return buildCommandGroups([], []);
     }
-    const releaseCommands = loadReleaseCommands(folder);
+    const releaseCommands = await loadReleaseCommands(folder, this.presetCommands);
     const customCommands = await loadCustomCommands(this.customCommands);
     return buildCommandGroups(releaseCommands, customCommands);
   }
 
   private async buildState(): Promise<PanelState> {
     const folder = this.ensureWorkspaceServices();
-    if (!folder || !this.store || !this.oss) {
+    if (!folder || !this.store || !this.remoteSync) {
       return this.buildEmptyState();
     }
 
@@ -1034,8 +1038,8 @@ export class ReleasePanelController {
       branch,
       appVersion: version.version,
       appBuild: version.build,
-      ossEnabled: this.oss.isEnabled(),
-      ossSyncedAt: this.ossSyncedAt,
+      remoteSyncEnabled: await this.remoteSync.isEnabled(),
+      remoteSyncedAt: this.remoteSyncedAt,
       syncing: this.syncing,
       runningRecordId: this.runningRecordId,
       runningRecordIds: [...this.parallelTasks.keys()],
@@ -1056,7 +1060,7 @@ export class ReleasePanelController {
       operators: [],
       operator: t('empty.unknownOperator'),
       branch: t('empty.unknownBranch'),
-      ossEnabled: false,
+      remoteSyncEnabled: false,
       syncing: this.syncing,
       runningRecordId: this.runningRecordId,
       runningRecordIds: [...this.parallelTasks.keys()],

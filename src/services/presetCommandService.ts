@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { PresetCommandStore } from './presetCommandStore';
 
 function normalizeCommand(command: string): string {
   return command.trim().replace(/;$/, '');
@@ -22,60 +23,42 @@ export function readExternalPresetCommands(folder: vscode.WorkspaceFolder): Reco
   return config.get<Record<string, string>>('command-runner.commands') ?? {};
 }
 
-export function readManagedPresetCommands(folder: vscode.WorkspaceFolder): Record<string, string> {
-  const config = vscode.workspace.getConfiguration('viberCommandRunner', folder.uri);
-  return config.get<Record<string, string>>('commands') ?? {};
-}
-
-async function writeManagedPresetCommands(
+export async function readManagedPresetCommands(
   folder: vscode.WorkspaceFolder,
-  commands: Record<string, string>,
-): Promise<void> {
-  const config = vscode.workspace.getConfiguration('viberCommandRunner', folder.uri);
-  await config.update('commands', commands, vscode.ConfigurationTarget.Workspace);
+  store: PresetCommandStore,
+): Promise<Record<string, string>> {
+  return store.load();
 }
 
 export async function addManagedPresetCommand(
   folder: vscode.WorkspaceFolder,
+  store: PresetCommandStore,
   label: string,
   command: string,
 ): Promise<void> {
   const nextLabel = normalizeLabel(label);
   const nextCommand = normalizeCommand(command);
-  const commands = { ...readManagedPresetCommands(folder) };
+  const commands = await store.load();
   commands[nextLabel] = nextCommand;
-  await writeManagedPresetCommands(folder, commands);
+  await store.replaceAll(commands);
 }
 
 export async function updateManagedPresetCommand(
   folder: vscode.WorkspaceFolder,
+  store: PresetCommandStore,
   presetKey: string,
   label: string,
   command: string,
 ): Promise<boolean> {
-  const commands = { ...readManagedPresetCommands(folder) };
-  if (!(presetKey in commands)) {
-    return false;
-  }
   const nextLabel = normalizeLabel(label);
   const nextCommand = normalizeCommand(command);
-  if (presetKey !== nextLabel) {
-    delete commands[presetKey];
-  }
-  commands[nextLabel] = nextCommand;
-  await writeManagedPresetCommands(folder, commands);
-  return true;
+  return store.update(presetKey, nextLabel, nextCommand);
 }
 
 export async function removeManagedPresetCommand(
   folder: vscode.WorkspaceFolder,
+  store: PresetCommandStore,
   presetKey: string,
 ): Promise<boolean> {
-  const commands = { ...readManagedPresetCommands(folder) };
-  if (!(presetKey in commands)) {
-    return false;
-  }
-  delete commands[presetKey];
-  await writeManagedPresetCommands(folder, commands);
-  return true;
+  return store.remove(presetKey);
 }

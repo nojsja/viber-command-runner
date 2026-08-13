@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { t } from '../i18n';
 import { CustomCommandStore } from './customCommandStore';
+import { PresetCommandStore } from './presetCommandStore';
 import {
   readExternalPresetCommands,
   readManagedPresetCommands,
@@ -146,9 +147,12 @@ export function buildCommandDefinition(
   };
 }
 
-export function loadReleaseCommands(folder: vscode.WorkspaceFolder): ReleaseCommandDefinition[] {
+export async function loadReleaseCommands(
+  folder: vscode.WorkspaceFolder,
+  presetStore: PresetCommandStore,
+): Promise<ReleaseCommandDefinition[]> {
   const external = readExternalPresetCommands(folder);
-  const managed = readManagedPresetCommands(folder);
+  const managed = await readManagedPresetCommands(folder, presetStore);
   const managedKeys = new Set(Object.keys(managed));
   const merged: Record<string, string> = { ...external, ...managed };
 
