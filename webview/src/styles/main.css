@@ -4,7 +4,14 @@
   --fg: var(--vscode-foreground);
   --muted: var(--vscode-descriptionForeground);
   --border: var(--vscode-panel-border, rgba(127, 127, 127, 0.25));
+  --border-subtle: rgba(127, 127, 127, 0.12);
   --card: var(--vscode-editorWidget-background, rgba(255, 255, 255, 0.04));
+  --surface-raised: var(--vscode-sideBar-background, rgba(127, 127, 127, 0.12));
+  --surface-sunken: rgba(127, 127, 127, 0.1);
+  --surface-item: rgba(127, 127, 127, 0.08);
+  --surface-item-hover: rgba(127, 127, 127, 0.14);
+  --radius-panel: 10px;
+  --radius-item: 8px;
   --accent: var(--vscode-button-background);
   --accent-fg: var(--vscode-button-foreground);
   --success: #3fb950;
@@ -86,7 +93,7 @@ body.window-mode .content-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
   grid-template-rows: minmax(0, 1fr);
-  gap: 16px;
+  gap: 12px;
   align-items: stretch;
   flex: 1 1 0;
   min-height: 0;
@@ -113,41 +120,48 @@ body.window-mode .content-grid > * {
 
 .commands-panel-head-adhoc {
   position: relative;
-  flex: 0 0 132px;
-  width: 132px;
+  flex: 1 1 132px;
+  min-width: 132px;
+  max-width: 132px;
   height: 30px;
+  transition:
+    max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+    flex-basis 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.commands-panel-head:has(.adhoc-field.is-expanded) .commands-panel-head-adhoc,
+.commands-panel-head:has(.adhoc-field.has-value) .commands-panel-head-adhoc {
+  flex: 1 1 280px;
+  max-width: min(420px, calc(100% - 168px));
 }
 
 .adhoc-field {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 
 .adhoc-field-inner {
-  position: absolute;
-  left: 0;
-  top: 0;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
-  width: 132px;
+  width: 100%;
   height: 30px;
   min-width: 0;
   padding: 0 4px 0 8px;
-  border: 1px solid var(--border);
+  border: none;
   border-radius: 8px;
-  background: var(--bg);
-  z-index: 5;
-  transition:
-    width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--vscode-input-background, var(--bg));
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  transition: box-shadow 0.2s ease;
 }
 
 .adhoc-field.is-expanded .adhoc-field-inner,
 .adhoc-field.has-value .adhoc-field-inner {
-  width: min(420px, calc(100vw - 96px));
-  z-index: 40;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  box-shadow:
+    inset 0 0 0 1px rgba(88, 166, 255, 0.35),
+    0 8px 24px rgba(0, 0, 0, 0.28);
 }
 
 .adhoc-field-prompt {
@@ -363,9 +377,9 @@ body.window-mode .history-archive-scroll {
 }
 
 .history-archive {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(127, 127, 127, 0.04);
+  border: none;
+  border-radius: var(--radius-item);
+  background: var(--surface-sunken);
   overflow: hidden;
 }
 
@@ -434,7 +448,7 @@ body.window-mode .history-archive-scroll {
 }
 
 .history-card-latest {
-  border-color: rgba(88, 166, 255, 0.35);
+  background: rgba(88, 166, 255, 0.08);
 }
 
 body.window-mode .history-list {
@@ -455,23 +469,40 @@ body.window-mode input[type='search'] {
   width: 260px;
 }
 
-.meta-card,
-.panel,
-.command-card,
-.history-card {
-  border: 1px solid var(--border);
-  background: var(--card);
-  border-radius: 10px;
-}
-
 .meta-card {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   column-gap: 6px;
   align-items: center;
   padding: 4px 8px;
+  border: none;
   border-radius: 6px;
+  background: var(--surface-sunken);
   min-width: 0;
+}
+
+.panel {
+  padding: 12px;
+  border: none;
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+  isolation: isolate;
+}
+
+.command-card,
+.history-card {
+  padding: 10px;
+  min-width: 0;
+  border: none;
+  border-radius: var(--radius-item);
+  background: var(--surface-item);
+  --entry-title-size: 12px;
+  transition: background 0.15s ease;
+}
+
+.command-card:hover,
+.history-card:hover {
+  background: var(--surface-item-hover);
 }
 
 .meta-label {
@@ -492,16 +523,14 @@ body.window-mode input[type='search'] {
   white-space: nowrap;
 }
 
-.panel {
-  padding: 10px;
-}
-
 .panel-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .panel-head h2 {
@@ -512,8 +541,8 @@ body.window-mode input[type='search'] {
 input[type='search'] {
   width: 180px;
   max-width: 100%;
-  border: 1px solid var(--border);
-  background: transparent;
+  border: none;
+  background: var(--surface-sunken);
   color: var(--fg);
   border-radius: 6px;
   padding: 6px 8px;
@@ -523,14 +552,7 @@ input[type='search'] {
 .history-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.command-card,
-.history-card {
-  padding: 10px;
-  min-width: 0;
-  --entry-title-size: 12px;
+  gap: 6px;
 }
 
 body.window-mode .command-card,
@@ -577,11 +599,12 @@ body.window-mode .history-card {
 }
 
 .badge {
-  border: 1px solid var(--border);
+  border: none;
   border-radius: 999px;
   padding: 2px 8px;
   font-size: 11px;
   color: var(--muted);
+  background: rgba(127, 127, 127, 0.14);
 }
 
 .command-card .badge,
@@ -589,29 +612,29 @@ body.window-mode .history-card {
   font-size: calc(var(--entry-title-size) - 1px);
 }
 
-.badge.platform-android { color: #3ddc84; border-color: rgba(61, 220, 132, 0.35); }
-.badge.platform-ios { color: #0a84ff; border-color: rgba(10, 132, 255, 0.35); }
-.badge.platform-shorebird { color: #a371f7; border-color: rgba(163, 113, 247, 0.35); }
-.badge.platform-install { color: #ffb020; border-color: rgba(255, 176, 32, 0.35); }
+.badge.platform-android { color: #3ddc84; background: rgba(61, 220, 132, 0.12); }
+.badge.platform-ios { color: #0a84ff; background: rgba(10, 132, 255, 0.12); }
+.badge.platform-shorebird { color: #a371f7; background: rgba(163, 113, 247, 0.12); }
+.badge.platform-install { color: #ffb020; background: rgba(255, 176, 32, 0.12); }
 .badge.platform-other { color: var(--muted); }
 
-.badge.type-dev { color: #56d4dd; border-color: rgba(86, 212, 221, 0.35); }
-.badge.type-prod { color: #ff7b72; border-color: rgba(255, 123, 114, 0.35); }
-.badge.type-profile { color: #79c0ff; border-color: rgba(121, 192, 255, 0.35); }
-.badge.type-release-adhoc { color: #ffa657; border-color: rgba(255, 166, 87, 0.35); }
-.badge.type-release-dev-env { color: #e3b341; border-color: rgba(227, 179, 65, 0.35); }
-.badge.type-patch { color: #d2a8ff; border-color: rgba(210, 168, 255, 0.35); }
-.badge.type-dry-run { color: #8b949e; border-color: rgba(139, 148, 158, 0.35); }
-.badge.type-install { color: #ffb020; border-color: rgba(255, 176, 32, 0.35); }
+.badge.type-dev { color: #56d4dd; background: rgba(86, 212, 221, 0.12); }
+.badge.type-prod { color: #ff7b72; background: rgba(255, 123, 114, 0.12); }
+.badge.type-profile { color: #79c0ff; background: rgba(121, 192, 255, 0.12); }
+.badge.type-release-adhoc { color: #ffa657; background: rgba(255, 166, 87, 0.12); }
+.badge.type-release-dev-env { color: #e3b341; background: rgba(227, 179, 65, 0.12); }
+.badge.type-patch { color: #d2a8ff; background: rgba(210, 168, 255, 0.12); }
+.badge.type-dry-run { color: #8b949e; background: rgba(139, 148, 158, 0.12); }
+.badge.type-install { color: #ffb020; background: rgba(255, 176, 32, 0.12); }
 .badge.type-unknown { color: var(--muted); }
 
-.badge.dest-pgyer { color: #ff9f43; border-color: rgba(255, 159, 67, 0.35); }
-.badge.dest-firebase { color: #ffca28; border-color: rgba(255, 202, 40, 0.35); }
-.badge.dest-app-store { color: #58a6ff; border-color: rgba(88, 166, 255, 0.35); }
-.badge.dest-play-internal { color: #3ddc84; border-color: rgba(61, 220, 132, 0.35); }
-.badge.dest-wecom { color: #2ea043; border-color: rgba(46, 160, 67, 0.35); }
-.badge.dest-local-device { color: #56d4dd; border-color: rgba(86, 212, 221, 0.35); }
-.badge.dest-local-build { color: #8b949e; border-color: rgba(139, 148, 158, 0.35); }
+.badge.dest-pgyer { color: #ff9f43; background: rgba(255, 159, 67, 0.12); }
+.badge.dest-firebase { color: #ffca28; background: rgba(255, 202, 40, 0.12); }
+.badge.dest-app-store { color: #58a6ff; background: rgba(88, 166, 255, 0.12); }
+.badge.dest-play-internal { color: #3ddc84; background: rgba(61, 220, 132, 0.12); }
+.badge.dest-wecom { color: #2ea043; background: rgba(46, 160, 67, 0.12); }
+.badge.dest-local-device { color: #56d4dd; background: rgba(86, 212, 221, 0.12); }
+.badge.dest-local-build { color: #8b949e; background: rgba(139, 148, 158, 0.12); }
 
 .status-success { color: var(--success); }
 .status-failed { color: var(--danger); }
@@ -628,8 +651,9 @@ button.hidden {
   display: none;
 }
 
-.badge.type-custom { color: #79c0ff; border-color: rgba(121, 192, 255, 0.35); }
-.badge.type-adhoc { color: #8b949e; border-color: rgba(139, 148, 158, 0.35); }
+.badge.type-custom { color: #79c0ff; background: rgba(121, 192, 255, 0.12); }
+.badge.type-adhoc { color: #8b949e; background: rgba(139, 148, 158, 0.12); }
+.badge.type-interactive { color: #d2a8ff; background: rgba(210, 168, 255, 0.12); }
 
 .commands-panel {
   min-width: 0;
@@ -640,7 +664,7 @@ button.hidden {
   align-items: center;
   gap: 10px;
   flex-wrap: nowrap;
-  overflow: visible;
+  overflow: hidden;
   position: relative;
   z-index: 6;
 }
@@ -651,11 +675,13 @@ button.hidden {
 
 .commands-panel-head .parallel-toggle {
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .command-filter {
   position: relative;
   flex-shrink: 0;
+  z-index: 2;
 }
 
 .command-filter-btn {
@@ -734,8 +760,8 @@ button.hidden {
   flex-shrink: 0;
   border-radius: 999px;
   background: rgba(127, 127, 127, 0.35);
-  border: 1px solid var(--border);
-  transition: background 0.2s ease, border-color 0.2s ease;
+  border: none;
+  transition: background 0.2s ease;
 }
 
 .parallel-switch-slider::before {
@@ -782,10 +808,10 @@ button.hidden {
 }
 
 .command-task-terminal {
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: none;
+  border-radius: var(--radius-item);
   overflow: hidden;
-  background: rgba(127, 127, 127, 0.04);
+  background: var(--surface-sunken);
 }
 
 .command-task-terminal-head {
@@ -794,7 +820,8 @@ button.hidden {
   align-items: center;
   gap: 12px;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: none;
+  background: rgba(127, 127, 127, 0.06);
   min-width: 0;
   overflow: hidden;
 }
@@ -927,10 +954,10 @@ body.window-mode .commands-panel > .adhoc-task-terminals {
 }
 
 .command-group {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(127, 127, 127, 0.04);
-  overflow: hidden;
+  border: none;
+  border-radius: var(--radius-item);
+  background: transparent;
+  overflow: visible;
 }
 
 .command-group-toggle {
@@ -942,6 +969,21 @@ body.window-mode .commands-panel > .adhoc-task-terminals {
   gap: 8px;
   font-weight: 600;
   user-select: none;
+  border-radius: var(--radius-item);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--vscode-editor-background, var(--bg));
+  box-shadow: 0 1px 0 var(--border-subtle);
+}
+
+.command-group-toggle:focus {
+  outline: none;
+}
+
+.command-group-toggle:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .command-group-title {
@@ -987,8 +1029,7 @@ body.window-mode .commands-panel > .adhoc-task-terminals {
 }
 
 .command-group .command-list {
-  padding: 8px;
-  border-top: 1px solid var(--border);
+  padding: 6px 0 0;
   min-width: 0;
 }
 
@@ -1003,15 +1044,15 @@ body.window-mode .commands-panel > .adhoc-task-terminals {
   grid-template-areas:
     'hint hint hint'
     'label command actions';
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: none;
+  border-radius: var(--radius-item);
   padding: 10px;
-  background: rgba(127, 127, 127, 0.04);
+  background: var(--surface-sunken);
 }
 
 .custom-add-form.custom-edit-form {
-  border-color: rgba(88, 166, 255, 0.35);
-  background: rgba(88, 166, 255, 0.06);
+  background: rgba(88, 166, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(88, 166, 255, 0.22);
 }
 
 .custom-form-hint {
@@ -1264,9 +1305,9 @@ body.window-mode .command-group .command-list > .command-card {
 }
 
 .terminal-sticky-inner {
-  border-color: rgba(210, 153, 34, 0.45);
-  background: var(--bg);
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.28);
+  border: none;
+  background: var(--surface-raised);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.32);
 }
 
 .terminal-sticky-output {
@@ -1289,6 +1330,8 @@ body.window-mode .command-group .command-list > .command-card {
   display: flex;
   flex-direction: column;
   min-height: 140px;
+  border: none;
+  background: var(--surface-raised);
 }
 
 body.window-mode .terminal-panel {
@@ -1316,9 +1359,9 @@ body.window-mode .terminal-panel {
   max-height: 42vh;
   overflow: auto;
   padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--vscode-terminal-background, rgba(0, 0, 0, 0.25));
+  border: none;
+  border-radius: var(--radius-item);
+  background: var(--vscode-terminal-background, rgba(0, 0, 0, 0.22));
   color: var(--vscode-terminal-foreground, var(--fg));
   font-family: var(--vscode-editor-font-family, Menlo, Monaco, 'Courier New', monospace);
   font-size: 11px;
@@ -1336,18 +1379,26 @@ body.window-mode .terminal-output {
   box-shadow: inset 0 0 0 1px rgba(248, 81, 73, 0.15);
 }
 
+.terminal-panel .panel-head,
+.terminal-sticky .panel-head {
+  border-bottom: none;
+  margin-bottom: 8px;
+  padding-bottom: 0;
+}
+
 .terminal-panel-body,
 .terminal-sticky-body {
   display: flex;
   flex-direction: column;
+  padding-top: 0;
 }
 
 .terminal-surface {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--vscode-terminal-background, rgba(0, 0, 0, 0.25));
+  border: none;
+  border-radius: var(--radius-item);
+  background: var(--vscode-terminal-background, rgba(0, 0, 0, 0.22));
   color: var(--vscode-terminal-foreground, #cccccc);
   font-family: var(--vscode-editor-font-family, Menlo, Monaco, 'Courier New', monospace);
   font-size: 11px;
@@ -1371,6 +1422,27 @@ body.window-mode .terminal-output {
   white-space: pre-wrap;
   word-break: break-word;
   cursor: text;
+}
+
+.terminal-virtual-spacer {
+  position: relative;
+  width: 100%;
+}
+
+.terminal-virtual-window {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  will-change: transform;
 }
 
 body.window-mode .terminal-surface .terminal-output {
@@ -1582,7 +1654,7 @@ body.window-mode .terminal-surface .terminal-output {
 
 .badge.interactive {
   color: #d2a8ff;
-  border-color: rgba(210, 168, 255, 0.35);
+  background: rgba(210, 168, 255, 0.12);
 }
 
 @media (max-width: 960px) {

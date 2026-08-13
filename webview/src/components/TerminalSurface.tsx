@@ -1,16 +1,18 @@
 import type { Ref } from 'preact';
 import { handleTerminalShortcut } from '../utils/terminal';
+import { VirtualTerminalOutput } from './VirtualTerminalOutput';
 
 interface TerminalSurfaceProps {
   surface: 'panel' | 'sticky' | 'task';
   recordId?: string;
-  output: string;
+  lines: readonly string[];
+  revision: number;
   hasStderr?: boolean;
   prompt: string;
   showInput?: boolean;
   hideInput?: boolean;
   inputRef?: Ref<HTMLInputElement>;
-  outputRef?: Ref<HTMLPreElement>;
+  outputRef?: Ref<HTMLDivElement>;
   onSurfaceClick?: (event: MouseEvent) => void;
   onInputKeyDown?: (event: KeyboardEvent) => void;
   onInputFocus?: () => void;
@@ -23,7 +25,8 @@ interface TerminalSurfaceProps {
 export function TerminalSurface({
   surface,
   recordId,
-  output,
+  lines,
+  revision,
   hasStderr,
   prompt,
   showInput = true,
@@ -75,17 +78,23 @@ export function TerminalSurface({
       data-record-id={recordId}
       onClick={onSurfaceClick}
     >
-      <pre ref={outputRef} id={outputId} class={outputClass}>
-        {output}
-      </pre>
+      <VirtualTerminalOutput
+        id={outputId}
+        lines={lines}
+        revision={revision}
+        className={outputClass}
+        outputRef={outputRef}
+      />
       {showInput ? (
         <div class={`terminal-command-line${surface === 'task' ? ' terminal-command-line-task' : ''}${hideInput ? ' hidden' : ''}`}>
-          <span
-            class={`terminal-command-prompt${surface === 'task' ? ' task-terminal-prompt' : ''}`}
-            data-record-id={recordId}
-          >
-            {prompt}
-          </span>
+          {prompt ? (
+            <span
+              class={`terminal-command-prompt${surface === 'task' ? ' task-terminal-prompt' : ''}`}
+              data-record-id={recordId}
+            >
+              {prompt}
+            </span>
+          ) : null}
           <input
             ref={inputRef}
             class={`terminal-command-input${surface === 'task' ? ' task-terminal-input' : ''}`}

@@ -26,6 +26,9 @@ node_modules/**/docs/**
 node_modules/**/.github/**
 node_modules/ali-oss/dist/**
 
+!node_modules/node-pty/**
+!node_modules/node-pty/prebuilds/**
+
 !out/**
 !README.md
 !LICENSE

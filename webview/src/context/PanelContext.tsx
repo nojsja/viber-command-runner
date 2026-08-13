@@ -12,13 +12,12 @@ import type {
 import {
   detectTerminalPrompt,
   isScrolledToBottom,
-  MAX_TERMINAL_CHARS,
   splitPromptContext,
-  stripAnsi,
-  stripTrailingPromptLine,
+  stripAnsiForDisplay,
   terminalPreviewLine,
   TERMINAL_DEFAULT_PROMPT,
 } from '../utils/terminal';
+import { TerminalLog } from '../utils/terminalLog';
 import type { VsCodeApi } from '../vite-env.d';
 
 export const HISTORY_PAGE_SIZE = 10;
@@ -41,9 +40,10 @@ export interface PanelContextValue {
   localGroupFold: Record<string, boolean>;
   setLocalGroupFold: (fold: Record<string, boolean>) => void;
   toggleGroupFold: (groupId: string, open: boolean) => void;
-  taskOutputs: Record<string, TaskOutput>;
   taskTerminalFold: Record<string, boolean>;
   setTaskTerminalFold: (recordId: string, expanded: boolean) => void;
+  mainTerminalLines: readonly string[];
+  terminalRevision: number;
   terminalBuffer: string;
   terminalHasStderr: boolean;
   loading: boolean;
@@ -159,9 +159,10 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
   const [panelState, setPanelState] = useState<PanelState | null>(null);
   const [filterText, setFilterTextState] = useState('');
   const [localGroupFold, setLocalGroupFold] = useState<Record<string, boolean>>({});
-  const [taskOutputs, setTaskOutputs] = useState<Record<string, TaskOutput>>({});
   const [taskTerminalFold, setTaskTerminalFoldState] = useState<Record<string, boolean>>({});
-  const [terminalBuffer, setTerminalBuffer] = useState('');
+  const [terminalRevision, setTerminalRevision] = useState(0);
+  const [taskRevisions, setTaskRevisions] = useState<Record<string, number>>({});
+  const [taskStderr, setTaskStderr] = useState<Record<string, boolean>>({});
   const [terminalHasStderr, setTerminalHasStderr] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMessageKey, setLoadingMessageKey] = useState<string | undefined>();
@@ -185,10 +186,11 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
   const lastLatestRecordIdRef = useRef<string | undefined>();
   const panelStateRef = useRef(panelState);
   panelStateRef.current = panelState;
-  const taskOutputsRef = useRef(taskOutputs);
-  taskOutputsRef.current = taskOutputs;
-  const terminalBufferRef = useRef(terminalBuffer);
-  terminalBufferRef.current = terminalBuffer;
+  const mainTerminalLogRef = useRef<TerminalLog>();
+  if (!mainTerminalLogRef.current) {
+    mainTerminalLogRef.current = new TerminalLog();
+  }
+  const taskLogsRef = useRef(new Map<string, TerminalLog>());
   const metaGridRef = useRef<HTMLElement | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const stickyDelayTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -198,6 +200,28 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
       clearTimeout(stickyDelayTimerRef.current);
       stickyDelayTimerRef.current = undefined;
     }
+  }, []);
+
+  useEffect(() => {
+    const log = mainTerminalLogRef.current;
+    if (!log) {
+      return;
+    }
+    return log.subscribe(() => {
+      setTerminalRevision(log.revision);
+    });
+  }, []);
+
+  const getOrCreateTaskLog = useCallback((recordId: string): TerminalLog => {
+    let log = taskLogsRef.current.get(recordId);
+    if (!log) {
+      log = new TerminalLog();
+      log.subscribe(() => {
+        setTaskRevisions((prev) => ({ ...prev, [recordId]: log!.revision }));
+      });
+      taskLogsRef.current.set(recordId, log);
+    }
+    return log;
   }, []);
 
   const postMessage = useCallback((message: Parameters<VsCodeApi['postMessage']>[0]) => {
@@ -232,50 +256,32 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
     [],
   );
 
-  const ensureTaskOutput = useCallback((recordId: string): TaskOutput => {
-    return taskOutputs[recordId] ?? { buffer: '', hasStderr: false };
-  }, [taskOutputs]);
-
   const appendTerminal = useCallback((chunk: string, stream: 'stdout' | 'stderr') => {
-    setTerminalBuffer((prev) => {
-      let next = prev + stripAnsi(chunk);
-      if (next.length > MAX_TERMINAL_CHARS) {
-        next = next.slice(-MAX_TERMINAL_CHARS);
-      }
-      return next;
-    });
+    mainTerminalLogRef.current?.append(chunk);
     if (stream === 'stderr') {
       setTerminalHasStderr(true);
     }
   }, []);
 
   const appendTaskTerminal = useCallback((recordId: string, chunk: string, stream: 'stdout' | 'stderr') => {
-    setTaskOutputs((prev) => {
-      const existing = prev[recordId] ?? { buffer: '', hasStderr: false };
-      let buffer = existing.buffer + stripAnsi(chunk);
-      if (buffer.length > MAX_TERMINAL_CHARS) {
-        buffer = buffer.slice(-MAX_TERMINAL_CHARS);
-      }
-      return {
-        ...prev,
-        [recordId]: {
-          buffer,
-          hasStderr: existing.hasStderr || stream === 'stderr',
-        },
-      };
-    });
-  }, []);
+    getOrCreateTaskLog(recordId).append(chunk);
+    if (stream === 'stderr') {
+      setTaskStderr((prev) => ({ ...prev, [recordId]: true }));
+    }
+  }, [getOrCreateTaskLog]);
 
   const clearMainTerminal = useCallback(() => {
-    setTerminalBuffer('');
+    mainTerminalLogRef.current?.clear();
     setTerminalHasStderr(false);
   }, []);
 
   const clearTaskTerminal = useCallback((recordId: string) => {
-    setTaskOutputs((prev) => ({
-      ...prev,
-      [recordId]: { buffer: '', hasStderr: false },
-    }));
+    taskLogsRef.current.get(recordId)?.clear();
+    setTaskStderr((prev) => {
+      const next = { ...prev };
+      delete next[recordId];
+      return next;
+    });
   }, []);
 
   const clearTerminal = useCallback(
@@ -291,16 +297,13 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
 
   const submitMainTerminalLine = useCallback(
     (value: string, sourceInput?: HTMLInputElement, _target?: 'panel' | 'sticky') => {
-      const line = value ?? '';
-      const prompt = detectTerminalPrompt(terminalBuffer);
-      setTerminalBuffer((prev) => `${prev}${prompt}${line}\n`);
-      postMessage({ type: 'terminalInput', value: line });
+      postMessage({ type: 'terminalInput', value: value ?? '' });
       if (sourceInput) {
         sourceInput.value = '';
         sourceInput.focus();
       }
     },
-    [postMessage, terminalBuffer],
+    [postMessage],
   );
 
   const submitTaskTerminalLine = useCallback(
@@ -317,25 +320,16 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
   const interruptTerminal = useCallback(
     (recordId?: string, sourceInput?: HTMLInputElement) => {
       if (recordId) {
-        setTaskOutputs((prev) => {
-          const existing = prev[recordId] ?? { buffer: '', hasStderr: false };
-          return {
-            ...prev,
-            [recordId]: {
-              ...existing,
-              buffer: `${existing.buffer}^C\n`,
-            },
-          };
-        });
+        getOrCreateTaskLog(recordId).append('^C\n');
       } else {
-        setTerminalBuffer((prev) => `${prev}^C\n`);
+        mainTerminalLogRef.current?.append('^C\n');
       }
       if (sourceInput) {
         sourceInput.value = '';
       }
       postMessage({ type: 'terminalInterrupt', recordId });
     },
-    [postMessage],
+    [getOrCreateTaskLog, postMessage],
   );
 
   const submitTerminalInput = useCallback(
@@ -375,12 +369,12 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
     (prompt: string, shortcuts: InteractivePromptState['shortcuts'], serverContext: string, recordId?: string) => {
       setInteractiveRecordId(recordId);
       const sourceBuffer =
-        recordId && taskOutputsRef.current[recordId]
-          ? taskOutputsRef.current[recordId].buffer
-          : terminalBufferRef.current;
+        recordId && taskLogsRef.current.get(recordId)
+          ? taskLogsRef.current.get(recordId)!.getBuffer()
+          : mainTerminalLogRef.current!.getBuffer();
       const split = splitPromptContext(sourceBuffer, prompt);
       const context = serverContext?.trim() || split.context;
-      const promptLines = split.promptLines || stripAnsi(prompt).trim();
+      const promptLines = split.promptLines || stripAnsiForDisplay(prompt).trim();
       setCurrentPromptText(promptLines);
       setInteractivePrompt({ prompt: promptLines, context, shortcuts, recordId });
     },
@@ -504,13 +498,21 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
   );
 
   const getTaskOutput = useCallback(
-    (recordId: string): TaskOutput => taskOutputs[recordId] ?? { buffer: '', hasStderr: false },
-    [taskOutputs],
+    (recordId: string): TaskOutput => {
+      const log = taskLogsRef.current.get(recordId);
+      return {
+        lines: log?.lines ?? [''],
+        revision: taskRevisions[recordId] ?? log?.revision ?? 0,
+        buffer: log?.getBuffer() ?? '',
+        hasStderr: taskStderr[recordId] ?? false,
+      };
+    },
+    [taskRevisions, taskStderr],
   );
 
   const getTaskTerminalPreview = useCallback(
-    (recordId: string) => terminalPreviewLine(taskOutputs[recordId]?.buffer || ''),
-    [taskOutputs],
+    (recordId: string) => terminalPreviewLine(taskLogsRef.current.get(recordId)?.getBuffer() || ''),
+    [taskRevisions],
   );
 
   const normalizedFilter = filterText.trim().toLowerCase();
@@ -636,8 +638,16 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
     });
   }, [activeTaskTerminalFocus, pendingTaskTerminalFocus]);
 
-  const terminalPrompt = useMemo(() => detectTerminalPrompt(terminalBuffer), [terminalBuffer]);
-  const terminalPreview = useMemo(() => terminalPreviewLine(terminalBuffer), [terminalBuffer]);
+  const mainTerminalLines = mainTerminalLogRef.current?.lines ?? [''];
+  const terminalBuffer = mainTerminalLogRef.current?.getBuffer() ?? '';
+  const terminalPrompt = useMemo(
+    () => detectTerminalPrompt(terminalBuffer),
+    [terminalBuffer, terminalRevision],
+  );
+  const terminalPreview = useMemo(
+    () => terminalPreviewLine(terminalBuffer),
+    [terminalBuffer, terminalRevision],
+  );
 
   const isRunning = !!panelState?.runningRecordId;
   const parallelRunning = (panelState?.runningRecordIds || []).length > 0;
@@ -782,10 +792,7 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
       }
       if (message.type === 'runStarted') {
         if (message.recordId && panelStateRef.current?.parallelMode) {
-          setTaskOutputs((prev) => ({
-            ...prev,
-            [message.recordId]: prev[message.recordId] ?? { buffer: '', hasStderr: false },
-          }));
+          getOrCreateTaskLog(message.recordId);
           return;
         }
         clearStickyDelayTimer();
@@ -866,9 +873,10 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
     localGroupFold,
     setLocalGroupFold,
     toggleGroupFold,
-    taskOutputs,
     taskTerminalFold,
     setTaskTerminalFold,
+    mainTerminalLines,
+    terminalRevision,
     terminalBuffer,
     terminalHasStderr,
     loading,
@@ -966,10 +974,6 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
   };
 
   return <PanelContext.Provider value={value}>{children}</PanelContext.Provider>;
-}
-
-export function getMainTerminalLogBuffer(buffer: string, prompt: string): string {
-  return stripTrailingPromptLine(buffer, prompt);
 }
 
 export { TERMINAL_DEFAULT_PROMPT };

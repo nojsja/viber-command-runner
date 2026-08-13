@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { t } from '../i18n';
-import { getMainTerminalLogBuffer, usePanel } from '../context/PanelContext';
+import { usePanel } from '../context/PanelContext';
 import { TerminalSurface } from './TerminalSurface';
 import { ClearIcon } from './icons';
 
@@ -17,32 +17,25 @@ export function StickyTerminal() {
     toggleTerminalFold,
     isTerminalExpanded,
     terminalPreview,
-    terminalBuffer,
+    mainTerminalLines,
+    terminalRevision,
     terminalHasStderr,
-    terminalPrompt,
     submitMainTerminalLine,
     positionStickyTerminal,
     setStickyTerminalHidden,
   } = usePanel();
 
   const stickyRef = useRef<HTMLElement>(null);
-  const outputRef = useRef<HTMLPreElement>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const parallelMode = !!panelState?.parallelMode;
   const expanded = isTerminalExpanded('sticky');
-  const logBuffer = getMainTerminalLogBuffer(terminalBuffer, terminalPrompt);
 
   useEffect(() => {
     if (showStickyTerminal) {
       requestAnimationFrame(() => positionStickyTerminal(stickyRef.current));
     }
-  }, [showStickyTerminal, positionStickyTerminal, terminalBuffer]);
-
-  useEffect(() => {
-    if (outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
-  }, [terminalBuffer]);
+  }, [showStickyTerminal, positionStickyTerminal, terminalRevision]);
 
   if (!showStickyTerminal) {
     return (
@@ -126,9 +119,10 @@ export function StickyTerminal() {
         <div class="terminal-sticky-body">
           <TerminalSurface
             surface="sticky"
-            output={logBuffer}
+            lines={mainTerminalLines}
+            revision={terminalRevision}
             hasStderr={terminalHasStderr}
-            prompt={terminalPrompt}
+            prompt=""
             hideInput={parallelMode}
             inputRef={inputRef}
             outputRef={outputRef}

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'preact/hooks';
 import { t } from '../i18n';
 import { usePanel } from '../context/PanelContext';
 import type { TaskSessionView } from '../types';
-import { detectTerminalPrompt, handleTerminalShortcut, stripTrailingPromptLine } from '../utils/terminal';
+import { detectTerminalPrompt, handleTerminalShortcut } from '../utils/terminal';
 import { TerminalSurface } from './TerminalSurface';
 import { ClearIcon } from './icons';
 
@@ -23,14 +23,14 @@ export function TaskTerminal({ session }: TaskTerminalProps) {
     setActiveTaskTerminalFocus,
     scrollTaskTerminalToBottom,
   } = usePanel();
-  const outputRef = useRef<HTMLPreElement>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recordId = session.recordId;
   const output = getTaskOutput(recordId);
   const expanded = isTaskTerminalExpanded(recordId);
   const preview = getTaskTerminalPreview(recordId);
   const prompt = detectTerminalPrompt(output.buffer);
-  const logBuffer = stripTrailingPromptLine(output.buffer, prompt);
+  const logLines = output.lines;
 
   const isRunning = session.status === 'running';
   const statusClass = isRunning ? 'running' : session.status === 'failed' ? 'failed' : '';
@@ -48,7 +48,7 @@ export function TaskTerminal({ session }: TaskTerminalProps) {
     requestAnimationFrame(() => {
       scrollTaskTerminalToBottom(recordId, outputRef.current);
     });
-  }, [output.buffer, recordId, scrollTaskTerminalToBottom]);
+  }, [output.revision, recordId, scrollTaskTerminalToBottom]);
 
   const handleFoldClick = () => {
     setTaskTerminalFold(recordId, !expanded);
@@ -141,7 +141,8 @@ export function TaskTerminal({ session }: TaskTerminalProps) {
         <TerminalSurface
           surface="task"
           recordId={recordId}
-          output={logBuffer}
+          lines={logLines}
+          revision={output.revision}
           hasStderr={output.hasStderr}
           prompt={prompt}
           showInput

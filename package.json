@@ -165,6 +165,7 @@
     "typescript": "^5.4.0"
   },
   "dependencies": {
-    "ali-oss": "^6.21.0"
+    "ali-oss": "^6.21.0",
+    "node-pty": "^1.1.0"
   }
 }

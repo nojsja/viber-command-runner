@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { t } from '../i18n';
-import { getMainTerminalLogBuffer, usePanel } from '../context/PanelContext';
+import { usePanel } from '../context/PanelContext';
 import { TerminalSurface } from './TerminalSurface';
 import { ClearIcon } from './icons';
 
@@ -17,24 +17,17 @@ export function ReleaseTerminal() {
     toggleTerminalFold,
     isTerminalExpanded,
     terminalPreview,
-    terminalBuffer,
+    mainTerminalLines,
+    terminalRevision,
     terminalHasStderr,
-    terminalPrompt,
     submitMainTerminalLine,
     setStickyTerminalHidden,
   } = usePanel();
 
-  const outputRef = useRef<HTMLPreElement>(null);
+  const outputRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const parallelMode = !!panelState?.parallelMode;
   const expanded = isTerminalExpanded('panel');
-  const logBuffer = getMainTerminalLogBuffer(terminalBuffer, terminalPrompt);
-
-  useEffect(() => {
-    if (outputRef.current) {
-      outputRef.current.scrollTop = outputRef.current.scrollHeight;
-    }
-  }, [terminalBuffer]);
 
   const handleShowSticky = () => {
     setStickyTerminalHidden(false);
@@ -114,9 +107,10 @@ export function ReleaseTerminal() {
       <div class="terminal-panel-body">
         <TerminalSurface
           surface="panel"
-          output={logBuffer}
+          lines={mainTerminalLines}
+          revision={terminalRevision}
           hasStderr={terminalHasStderr}
-          prompt={terminalPrompt}
+          prompt=""
           hideInput={parallelMode}
           inputRef={inputRef}
           outputRef={outputRef}

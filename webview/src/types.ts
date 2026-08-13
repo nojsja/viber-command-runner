@@ -140,6 +140,8 @@ export interface PanelState {
 }
 
 export interface TaskOutput {
+  lines: readonly string[];
+  revision: number;
   buffer: string;
   hasStderr: boolean;
 }

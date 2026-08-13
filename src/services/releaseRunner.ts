@@ -2,9 +2,11 @@ import * as cp from 'child_process';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import type * as Pty from 'node-pty';
 import * as vscode from 'vscode';
 import { ReleaseCommandDefinition } from '../types';
 import { t } from '../i18n';
+import { formatPtyInput, loadPanelPty } from './panelPty';
 
 export interface RunFinishedResult {
   exitCode: number;
@@ -183,16 +185,21 @@ interface ActiveShellRun {
 
 const SHELL_SETTLE_QUIET_MS = 400;
 const SHELL_SETTLE_MAX_MS = 3000;
+const MARKER_BUFFER_MAX = 65_536;
+const PANEL_PTY_COLS = 120;
+const PANEL_PTY_ROWS = 32;
 
 /** Persistent interactive shell for the panel terminal (serial mode). */
 export class PanelShellSession {
-  private proc: cp.ChildProcess | undefined;
+  private ptyProcess: Pty.IPty | undefined;
+  private pipeProcess: cp.ChildProcess | undefined;
   private activeRun: ActiveShellRun | undefined;
   private outputHandler: ((chunk: string, stream: 'stdout' | 'stderr') => void) | undefined;
   private starting: Promise<void> | undefined;
   private shellSettleChain: Promise<void> = Promise.resolve();
   private lastOutputAt = 0;
   private cancelEscalationTimers: NodeJS.Timeout[] = [];
+  private ptyDisposables: Pty.IDisposable[] = [];
 
   constructor(private readonly folder: vscode.WorkspaceFolder) {}
 
@@ -205,12 +212,12 @@ export class PanelShellSession {
   }
 
   isAlive(): boolean {
-    return !!this.proc;
+    return !!this.ptyProcess || !!this.pipeProcess;
   }
 
   async ensureStarted(onOutput: (chunk: string, stream: 'stdout' | 'stderr') => void): Promise<void> {
     this.outputHandler = onOutput;
-    if (this.proc) {
+    if (this.isAlive()) {
       return;
     }
     if (this.starting) {
@@ -226,12 +233,16 @@ export class PanelShellSession {
   }
 
   writeStdin(text: string): boolean {
-    if (!this.proc?.stdin?.writable) {
-      return false;
+    if (this.ptyProcess) {
+      this.ptyProcess.write(formatPtyInput(text));
+      return true;
     }
-    const payload = text.endsWith('\n') ? text : `${text}\n`;
-    this.proc.stdin.write(payload);
-    return true;
+    if (this.pipeProcess?.stdin?.writable) {
+      const payload = text.endsWith('\n') ? text : `${text}\n`;
+      this.pipeProcess.stdin.write(payload);
+      return true;
+    }
+    return false;
   }
 
   async run(
@@ -272,7 +283,7 @@ export class PanelShellSession {
   }
 
   cancel(): boolean {
-    if (!this.proc) {
+    if (!this.isAlive()) {
       return false;
     }
     const active = this.activeRun;
@@ -280,10 +291,9 @@ export class PanelShellSession {
       active.cancelRequested = true;
     }
     this.clearCancelEscalation();
-    this.signalRunningJob('SIGINT');
+    this.interruptForeground();
     this.scheduleCancelEscalation();
     if (active) {
-      // UI must not wait for the exit marker; the real interrupt is sent via signals.
       this.finishActiveRun(130, true);
     }
     this.shellSettleChain = this.shellSettleChain.then(() => this.settleShellAfterInterrupt());
@@ -291,19 +301,28 @@ export class PanelShellSession {
   }
 
   interrupt(): boolean {
-    if (!this.proc?.pid) {
+    if (!this.isAlive()) {
       return false;
     }
-    this.signalRunningJob('SIGINT');
+    this.interruptForeground();
     return true;
   }
 
   dispose(): void {
     this.clearCancelEscalation();
-    if (this.proc?.pid) {
-      killProcessTree(this.proc.pid, 'SIGTERM');
+    this.disposePtyListeners();
+    if (this.ptyProcess) {
+      try {
+        this.ptyProcess.kill();
+      } catch {
+        // Process may already be gone.
+      }
     }
-    this.proc = undefined;
+    if (this.pipeProcess?.pid) {
+      killProcessTree(this.pipeProcess.pid, 'SIGTERM');
+    }
+    this.ptyProcess = undefined;
+    this.pipeProcess = undefined;
     this.activeRun = undefined;
     this.outputHandler = undefined;
     this.shellSettleChain = Promise.resolve();
@@ -316,11 +335,57 @@ export class PanelShellSession {
     if (!/\bdquote>|\bquote>/.test(chunk)) {
       return;
     }
-    this.signalRunningJob('SIGINT');
+    this.ptyProcess?.write('\x03');
+    this.pipeProcess?.stdin?.write('\x03');
     this.finishActiveRun(1, false);
   }
 
+  private interruptForeground(): void {
+    if (this.ptyProcess) {
+      this.ptyProcess.write('\x03');
+      return;
+    }
+    this.signalRunningJob('SIGINT');
+  }
+
   private async startShell(): Promise<void> {
+    try {
+      await this.startPtyShell();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.outputHandler?.(`\n[pty fallback] ${message}\n`, 'stderr');
+      await this.startPipeShell();
+    }
+  }
+
+  private async startPtyShell(): Promise<void> {
+    const shell = resolveShellExecutable();
+    const env = toPtyEnv(await resolveCommandEnvironment());
+    const invocation = buildInteractiveShellInvocation(shell);
+    const ptyModule = loadPanelPty();
+
+    const ptyProcess = ptyModule.spawn(invocation.executable, invocation.args, {
+      name: 'xterm-256color',
+      cols: PANEL_PTY_COLS,
+      rows: PANEL_PTY_ROWS,
+      cwd: this.folder.uri.fsPath,
+      env,
+    });
+
+    this.ptyProcess = ptyProcess;
+    this.ptyDisposables.push(
+      ptyProcess.onData((data) => {
+        this.handleOutput(data, 'stdout');
+      }),
+      ptyProcess.onExit(({ exitCode, signal }) => {
+        this.ptyProcess = undefined;
+        this.disposePtyListeners();
+        this.finishActiveRun(resolveExitCode(exitCode, signalToNodeSignal(signal)), true);
+      }),
+    );
+  }
+
+  private async startPipeShell(): Promise<void> {
     const shell = resolveShellExecutable();
     const env = await resolveCommandEnvironment();
     const invocation = buildInteractiveShellInvocation(shell);
@@ -337,7 +402,7 @@ export class PanelShellSession {
       proc.unref();
     }
 
-    this.proc = proc;
+    this.pipeProcess = proc;
     proc.stdout?.on('data', (buf: Buffer) => {
       this.handleOutput(decodeShellOutput(buf), 'stdout');
     });
@@ -345,12 +410,12 @@ export class PanelShellSession {
       this.handleOutput(decodeShellOutput(buf), 'stderr');
     });
     proc.on('close', (code, signal) => {
-      this.proc = undefined;
+      this.pipeProcess = undefined;
       this.finishActiveRun(resolveExitCode(code, signal), true);
     });
     proc.on('error', (error) => {
       this.outputHandler?.(`\n[error] ${error.message}\n`, 'stderr');
-      this.proc = undefined;
+      this.pipeProcess = undefined;
       this.finishActiveRun(1, false);
     });
   }
@@ -364,6 +429,9 @@ export class PanelShellSession {
     }
 
     this.activeRun.buffer += chunk;
+    if (this.activeRun.buffer.length > MARKER_BUFFER_MAX) {
+      this.activeRun.buffer = this.activeRun.buffer.slice(-MARKER_BUFFER_MAX);
+    }
     const escaped = this.activeRun.marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pattern = new RegExp(`${escaped}(\\d+)__`);
     const match = pattern.exec(this.activeRun.buffer);
@@ -407,27 +475,31 @@ export class PanelShellSession {
 
   private async settleShellAfterInterrupt(): Promise<void> {
     await delay(150);
-    if (!this.proc?.stdin?.writable) {
+    if (!this.isAlive()) {
       return;
     }
-    // Wake the shell back to a prompt without sending fake Ctrl+C bytes on a pipe.
     this.writeStdin('');
     await this.waitForOutputQuiet(SHELL_SETTLE_QUIET_MS, SHELL_SETTLE_MAX_MS);
   }
 
+  private getShellPid(): number | undefined {
+    return this.ptyProcess?.pid ?? this.pipeProcess?.pid;
+  }
+
   private signalRunningJob(signal: NodeJS.Signals): void {
-    if (!this.proc?.pid) {
-      return;
-    }
-    const shellPid = this.proc.pid;
-    if (process.platform === 'win32') {
-      for (const childPid of listDescendantPids(shellPid)) {
-        killProcessTree(childPid, signal);
+    if (this.ptyProcess) {
+      if (signal === 'SIGINT') {
+        this.ptyProcess.write('\x03');
+        return;
       }
+    }
+
+    const shellPid = this.getShellPid();
+    if (!shellPid) {
       return;
     }
 
-    if (signal !== 'SIGKILL') {
+    if (!this.ptyProcess && signal !== 'SIGKILL') {
       try {
         process.kill(-shellPid, signal);
       } catch {
@@ -449,18 +521,18 @@ export class PanelShellSession {
   }
 
   private scheduleCancelEscalation(): void {
-    const shellPid = this.proc?.pid;
+    const shellPid = this.getShellPid();
     if (!shellPid) {
       return;
     }
     this.cancelEscalationTimers.push(
       setTimeout(() => {
-        if (this.proc?.pid === shellPid) {
+        if (this.getShellPid() === shellPid) {
           this.signalRunningJob('SIGTERM');
         }
       }, 2000),
       setTimeout(() => {
-        if (this.proc?.pid === shellPid) {
+        if (this.getShellPid() === shellPid) {
           this.signalRunningJob('SIGKILL');
         }
       }, 5000),
@@ -472,6 +544,13 @@ export class PanelShellSession {
       clearTimeout(timer);
     }
     this.cancelEscalationTimers = [];
+  }
+
+  private disposePtyListeners(): void {
+    for (const disposable of this.ptyDisposables) {
+      disposable.dispose();
+    }
+    this.ptyDisposables = [];
   }
 
   private waitForOutputQuiet(quietMs: number, maxWaitMs: number): Promise<void> {
@@ -492,6 +571,44 @@ export class PanelShellSession {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function toPtyEnv(env: NodeJS.ProcessEnv): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) {
+      continue;
+    }
+    if (key === 'VSCODE_SHELL_INTEGRATION' || key === 'VSCODE_INJECTION') {
+      continue;
+    }
+    if (key.startsWith('VSCODE_IPC_')) {
+      continue;
+    }
+    if (key === 'ZDOTDIR' && /vscode|code/i.test(value)) {
+      continue;
+    }
+    result[key] = value;
+  }
+  if (env.USER_ZDOTDIR) {
+    result.ZDOTDIR = env.USER_ZDOTDIR;
+  }
+  // Avoid VS Code shell-integration OSC sequences (633) leaking into plain-text output.
+  result.TERM_PROGRAM = 'xterm';
+  return result;
+}
+
+function signalToNodeSignal(signal: number | undefined): NodeJS.Signals | null {
+  if (signal === undefined) {
+    return null;
+  }
+  const table: Record<number, NodeJS.Signals> = {
+    1: 'SIGHUP',
+    2: 'SIGINT',
+    9: 'SIGKILL',
+    15: 'SIGTERM',
+  };
+  return table[signal] ?? null;
 }
 
 interface ShellInvocation {
