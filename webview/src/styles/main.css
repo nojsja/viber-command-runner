@@ -16,6 +16,35 @@
   box-sizing: border-box;
 }
 
+input:not([type='checkbox']):not([type='radio']):not([type='range']),
+textarea,
+select {
+  outline: none;
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='range']):focus,
+input:not([type='checkbox']):not([type='radio']):not([type='range']):focus-visible,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
+select:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+input[type='search']:focus,
+input[type='search']:focus-visible,
+input[type='text']:focus,
+input[type='text']:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+.custom-add-form input:focus,
+.custom-add-form input:focus-visible,
+.input-field:focus,
+.input-field:focus-visible {
+  border-color: var(--border);
+}
+
 body {
   margin: 0;
   font-family: var(--vscode-font-family);
@@ -80,6 +109,114 @@ body.window-mode .content-grid > * {
   margin: 0;
   font-size: 20px;
   line-height: 1.2;
+}
+
+.commands-panel-head-adhoc {
+  position: relative;
+  flex: 0 0 132px;
+  width: 132px;
+  height: 30px;
+}
+
+.adhoc-field {
+  position: absolute;
+  inset: 0;
+}
+
+.adhoc-field-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 132px;
+  height: 30px;
+  min-width: 0;
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  z-index: 5;
+  transition:
+    width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.adhoc-field.is-expanded .adhoc-field-inner,
+.adhoc-field.has-value .adhoc-field-inner {
+  width: min(420px, calc(100vw - 96px));
+  z-index: 40;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+.adhoc-field-prompt {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.adhoc-field-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.adhoc-field-input::placeholder {
+  color: var(--muted);
+  transition: opacity 0.2s ease;
+}
+
+.adhoc-field:not(.is-expanded):not(.has-value) .adhoc-field-input::placeholder {
+  opacity: 0.72;
+}
+
+.adhoc-field-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  overflow: hidden;
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(6px);
+  pointer-events: none;
+  transition:
+    max-width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.22s ease,
+    transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.adhoc-field.is-expanded .adhoc-field-actions,
+.adhoc-field.has-value .adhoc-field-actions {
+  max-width: 120px;
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.adhoc-field-paste {
+  padding: 3px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.adhoc-field-run {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px 8px;
+}
+
+.adhoc-task-terminals {
+  margin-bottom: 12px;
 }
 
 .hero-actions {
@@ -502,11 +639,65 @@ button.hidden {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow: visible;
+  position: relative;
+  z-index: 6;
 }
 
 .commands-panel-head h2 {
-  margin-right: auto;
+  flex-shrink: 0;
+}
+
+.commands-panel-head .parallel-toggle {
+  margin-left: auto;
+}
+
+.command-filter {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.command-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px 8px;
+  line-height: 0;
+}
+
+.command-filter-btn.is-active {
+  color: var(--accent);
+}
+
+.command-filter-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 280px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+.command-filter-popover input[type='search'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+
+.command-filter-clear {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  font-size: 11px;
 }
 
 .parallel-toggle {
@@ -715,7 +906,7 @@ body.window-mode .commands-panel {
 }
 
 body.window-mode .commands-panel > .panel-head,
-body.window-mode .commands-panel > .adhoc-runner {
+body.window-mode .commands-panel > .adhoc-task-terminals {
   flex-shrink: 0;
 }
 
@@ -801,42 +992,6 @@ body.window-mode .commands-panel > .adhoc-runner {
   min-width: 0;
 }
 
-.adhoc-runner {
-  margin-bottom: 12px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(127, 127, 127, 0.04);
-}
-
-.adhoc-head {
-  color: var(--muted);
-  font-size: 11px;
-  margin-bottom: 8px;
-  font-weight: 600;
-}
-
-.adhoc-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.adhoc-row input {
-  flex: 1;
-  min-width: 0;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--fg);
-  border-radius: 6px;
-  padding: 6px 8px;
-  font: inherit;
-}
-
-.adhoc-row button {
-  flex-shrink: 0;
-}
-
 .custom-add-form {
   display: grid;
   gap: 8px;
@@ -917,7 +1072,7 @@ body.window-mode .commands-panel > .adhoc-runner {
 
 .command-actions .icon-btn,
 .command-actions button[data-run-key].icon-btn,
-#adhoc-run.icon-btn {
+.adhoc-field-run.icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;

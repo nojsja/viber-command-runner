@@ -85,6 +85,7 @@ export type PanelMessage =
   | { type: 'setParallelMode'; enabled: boolean }
   | { type: 'setTerminalFold'; target: 'sticky' | 'panel'; expanded: boolean }
   | { type: 'refresh' }
+  | { type: 'reloadWebview' }
   | { type: 'syncOss' }
   | { type: 'openSettings' }
   | { type: 'openTerminal' }

@@ -62,6 +62,24 @@ export function PlusIcon() {
   );
 }
 
+export function FilterIcon() {
+  return (
+    <svg
+      class="command-action-icon"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      focusable="false"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M2.75 3.75H13.25L9.25 8.25V11.75L7.75 13.25V8.25L2.75 3.75" />
+    </svg>
+  );
+}
+
 export function RefreshIcon() {
   return (
     <svg class="command-action-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">

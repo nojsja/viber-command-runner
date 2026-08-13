@@ -13,7 +13,7 @@ export class ReleaseWindowPanel {
 
   private constructor(
     private readonly panel: vscode.WebviewPanel,
-    extensionUri: vscode.Uri,
+    private readonly extensionUri: vscode.Uri,
     secrets: vscode.SecretStorage,
   ) {
     this.controller = new ReleasePanelController(secrets);
@@ -78,6 +78,18 @@ export class ReleaseWindowPanel {
     return ReleaseWindowPanel.currentPanel?.controller;
   }
 
+  public static reloadCurrentWebview(): boolean {
+    if (!ReleaseWindowPanel.currentPanel) {
+      return false;
+    }
+    ReleaseWindowPanel.currentPanel.reloadWebview();
+    return true;
+  }
+
+  public reloadWebview(): void {
+    this.panel.webview.html = this.renderHtml(this.extensionUri, this.panel.webview);
+  }
+
   private async handleMessage(message: PanelMessage): Promise<void> {
     switch (message.type) {
       case 'ready':
@@ -85,6 +97,9 @@ export class ReleaseWindowPanel {
         break;
       case 'refresh':
         await this.loadAndPostState('refresh');
+        break;
+      case 'reloadWebview':
+        this.reloadWebview();
         break;
       case 'runCommand': {
         void this.controller.runCommand(message.commandKey);
