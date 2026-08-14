@@ -40,13 +40,13 @@
     "commands": [
       {
         "command": "viberWorkbench.openPanel",
-        "title": "Viber Workbench: 打开工作台",
+        "title": "Viber Workbench: 打开命令面板",
         "icon": "$(rocket)",
         "category": "Viber Workbench"
       },
       {
         "command": "viberWorkbench.refresh",
-        "title": "Viber Workbench: 刷新工作台",
+        "title": "Viber Workbench: 刷新命令面板",
         "icon": "$(refresh)",
         "category": "Viber Workbench"
       },

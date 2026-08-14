@@ -6,7 +6,7 @@ VS Code / Cursor extension for running workspace build and script commands from 
 
 - Read commands from `command-runner.commands` or workbench-managed preset commands
 - Open the **workbench** in a full editor tab (not a narrow sidebar)
-- Command: `Viber Workbench: Open Workbench`
+- Command: `Viber Workbench: Open Command Panel`
 - Local run history: time, branch, platform, operator, version
 - Pluggable remote sync for run history (pull on panel open, push after each run)
 - Custom commands, instant commands, embedded terminal, and interactive prompts
