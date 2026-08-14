@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { getExtensionConfiguration } from '../config';
 import { ensureWorkspaceDataDir, getWorkspaceDataDir } from './userDataPaths';
 
 const PRESET_FILE = 'preset-commands.json';
@@ -79,7 +80,7 @@ async function clearLegacyCommandsConfig(
   folder: vscode.WorkspaceFolder,
   inspect: NonNullable<ReturnType<vscode.WorkspaceConfiguration['inspect']>>,
 ): Promise<void> {
-  const config = vscode.workspace.getConfiguration('viberCommandRunner', folder.uri);
+  const config = getExtensionConfiguration(folder.uri);
   if (inspect.globalValue !== undefined) {
     await config.update('commands', undefined, vscode.ConfigurationTarget.Global);
   }
@@ -92,7 +93,7 @@ async function clearLegacyCommandsConfig(
 }
 
 async function runMigration(folder: vscode.WorkspaceFolder): Promise<void> {
-  const config = vscode.workspace.getConfiguration('viberCommandRunner', folder.uri);
+  const config = getExtensionConfiguration(folder.uri);
   const inspect = config.inspect<Record<string, string>>('commands');
   const legacyPresent = hasLegacyCommands(inspect);
 

@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-const EXTENSION_ID = 'nojsja.viber-command-runner';
+const EXTENSION_ID = 'nojsja.viber-workbench';
 
 let cachedVersion: string | undefined;
 

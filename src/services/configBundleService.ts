@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs/promises';
 import * as vscode from 'vscode';
+import { getExtensionConfiguration } from '../config';
 import { getExtensionVersion } from '../extensionMeta';
 import { t } from '../i18n';
 import { CustomCommandStore, StoredCustomCommand } from './customCommandStore';
@@ -154,7 +155,7 @@ export async function exportConfigToFile(
   folder: vscode.WorkspaceFolder,
   bundle: RunnerConfigBundle,
 ): Promise<string | undefined> {
-  const defaultUri = vscode.Uri.joinPath(folder.uri, 'viber-command-runner-config.json');
+  const defaultUri = vscode.Uri.joinPath(folder.uri, 'viber-workbench-config.json');
   const target = await vscode.window.showSaveDialog({
     defaultUri,
     filters: CONFIG_FILE_FILTER,
@@ -174,7 +175,7 @@ export async function exportConfigToFile(
 }
 
 export async function importConfigFromFile(folder: vscode.WorkspaceFolder): Promise<ConfigBundleParseResult | undefined> {
-  const defaultUri = vscode.Uri.joinPath(folder.uri, 'viber-command-runner-config.json');
+  const defaultUri = vscode.Uri.joinPath(folder.uri, 'viber-workbench-config.json');
   const picked = await vscode.window.showOpenDialog({
     defaultUri,
     canSelectMany: false,
@@ -309,7 +310,7 @@ function normalizeSettings(raw: Record<string, unknown>): RunnerConfigSettings |
 }
 
 function readWorkspaceSettings(folder: vscode.WorkspaceFolder): RunnerConfigSettings {
-  const config = vscode.workspace.getConfiguration('viberCommandRunner', folder.uri);
+  const config = getExtensionConfiguration(folder.uri);
   return {
     commandsSource: config.get<string>('commandsSource'),
     terminalName: config.get<string>('terminalName'),
@@ -325,7 +326,7 @@ async function applyWorkspaceSettings(
   secrets: vscode.SecretStorage,
   settings: RunnerConfigSettings,
 ): Promise<void> {
-  const config = vscode.workspace.getConfiguration('viberCommandRunner', folder.uri);
+  const config = getExtensionConfiguration(folder.uri);
   const target = vscode.ConfigurationTarget.Workspace;
 
   if (settings.commandsSource !== undefined) {

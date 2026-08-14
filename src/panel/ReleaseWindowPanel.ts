@@ -4,7 +4,7 @@ import { PanelMessage } from '../types';
 import { postExtensionMessage, ReleasePanelController } from './ReleasePanelController';
 
 export class ReleaseWindowPanel {
-  public static readonly viewType = 'viberCommandRunner.window';
+  public static readonly viewType = 'viberWorkbench.window';
 
   private static currentPanel: ReleaseWindowPanel | undefined;
 
@@ -62,7 +62,7 @@ export class ReleaseWindowPanel {
 
     const panel = vscode.window.createWebviewPanel(
       ReleaseWindowPanel.viewType,
-      'Viber Command Runner',
+      'Viber Workbench',
       vscode.ViewColumn.Active,
       {
         enableScripts: true,
@@ -249,7 +249,7 @@ export class ReleaseWindowPanel {
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src ${webview.cspSource} 'nonce-${nonce}';" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="${styleUri}" />
-  <title>Viber Command Runner Panel</title>
+  <title>Viber Workbench</title>
 </head>
 <body class="window-mode">
   <div id="root"></div>

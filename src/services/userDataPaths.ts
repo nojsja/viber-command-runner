@@ -4,7 +4,8 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-const USER_DATA_ROOT = path.join(os.homedir(), '.viber', 'command-runner');
+const USER_DATA_ROOT = path.join(os.homedir(), '.viber', 'workbench');
+const LEGACY_USER_DATA_ROOT = path.join(os.homedir(), '.viber', 'command-runner');
 
 export function getUserDataRoot(): string {
   return USER_DATA_ROOT;
@@ -15,6 +16,13 @@ export function getWorkspaceDataDir(folder: vscode.WorkspaceFolder): string {
   const slug =
     folder.name.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'workspace';
   return path.join(USER_DATA_ROOT, 'workspaces', `${slug}-${hash}`);
+}
+
+function getLegacyWorkspaceDataDir(folder: vscode.WorkspaceFolder): string {
+  const hash = crypto.createHash('sha1').update(folder.uri.fsPath).digest('hex').slice(0, 10);
+  const slug =
+    folder.name.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'workspace';
+  return path.join(LEGACY_USER_DATA_ROOT, 'workspaces', `${slug}-${hash}`);
 }
 
 export async function ensureWorkspaceDataDir(folder: vscode.WorkspaceFolder): Promise<string> {
@@ -29,7 +37,9 @@ async function migrateLegacyWorkspaceData(
   targetDir: string,
 ): Promise<void> {
   const legacyDirs = [
+    getLegacyWorkspaceDataDir(folder),
     path.join(folder.uri.fsPath, '.viber', 'command-runner'),
+    path.join(folder.uri.fsPath, '.viber', 'workbench'),
     path.join(folder.uri.fsPath, '.goocean', 'release-panel'),
   ];
 

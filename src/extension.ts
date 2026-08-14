@@ -28,7 +28,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (!event.affectsConfiguration('viberCommandRunner.uiLanguage')) {
+      if (!event.affectsConfiguration('viberWorkbench.uiLanguage') && !event.affectsConfiguration('viberCommandRunner.uiLanguage')) {
         return;
       }
       const controller = ReleaseWindowPanel.getCurrentController();
@@ -36,9 +36,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<{
         void controller.refresh();
       }
     }),
-    vscode.window.registerWebviewViewProvider(ReleaseLauncherProvider.viewType, new ReleaseLauncherProvider(context.extensionUri)),
-    vscode.commands.registerCommand('viberCommandRunner.openPanel', openPanel),
-    vscode.commands.registerCommand('viberCommandRunner.refresh', async () => {
+    vscode.window.registerWebviewViewProvider(
+      ReleaseLauncherProvider.viewType,
+      new ReleaseLauncherProvider(context),
+      { webviewOptions: { retainContextWhenHidden: true } },
+    ),
+    vscode.commands.registerCommand('viberWorkbench.openPanel', openPanel),
+    vscode.commands.registerCommand('viberWorkbench.refresh', async () => {
       const controller = ReleaseWindowPanel.getCurrentController();
       if (!controller) {
         openPanel();
@@ -46,7 +50,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<{
       }
       await controller.refresh();
     }),
-    vscode.commands.registerCommand('viberCommandRunner.syncRemote', async () => {
+    vscode.commands.registerCommand('viberWorkbench.syncRemote', async () => {
       const controller = ReleaseWindowPanel.getCurrentController();
       if (!controller) {
         openPanel();

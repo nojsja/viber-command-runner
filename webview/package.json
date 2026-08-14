@@ -1,5 +1,5 @@
 {
-  "name": "viber-command-runner-webview",
+  "name": "viber-workbench-webview",
   "private": true,
   "version": "1.0.0",
   "type": "module",

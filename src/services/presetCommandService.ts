@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { getExtensionConfigValue } from '../config';
 import { PresetCommandStore } from './presetCommandStore';
 
 function normalizeCommand(command: string): string {
@@ -9,14 +10,13 @@ function normalizeLabel(label: string): string {
   return label.trim();
 }
 
-export function getCommandsSource(folder: vscode.WorkspaceFolder): 'command-runner' | 'viberCommandRunner' {
-  const config = vscode.workspace.getConfiguration('viberCommandRunner', folder.uri);
-  const source = config.get<string>('commandsSource');
-  return source === 'viberCommandRunner' ? 'viberCommandRunner' : 'command-runner';
+export function getCommandsSource(folder: vscode.WorkspaceFolder): 'command-runner' | 'viberWorkbench' {
+  const source = getExtensionConfigValue<string>('commandsSource', 'command-runner', folder.uri);
+  return source === 'viberWorkbench' || source === 'viberCommandRunner' ? 'viberWorkbench' : 'command-runner';
 }
 
 export function readExternalPresetCommands(folder: vscode.WorkspaceFolder): Record<string, string> {
-  if (getCommandsSource(folder) === 'viberCommandRunner') {
+  if (getCommandsSource(folder) === 'viberWorkbench') {
     return {};
   }
   const config = vscode.workspace.getConfiguration(undefined, folder.uri);

@@ -1,10 +1,10 @@
-import * as vscode from 'vscode';
+import { getExtensionConfigValue } from '../config';
 import { MessageKey, MessageParams, messageCatalog, translate, UiLanguage } from './messages';
 
 export type { MessageKey, MessageParams, UiLanguage };
 
 export function getUiLanguage(): UiLanguage {
-  const value = vscode.workspace.getConfiguration('viberCommandRunner').get<string>('uiLanguage', 'en');
+  const value = getExtensionConfigValue<string>('uiLanguage', 'en');
   return value === 'zh' ? 'zh' : 'en';
 }
 

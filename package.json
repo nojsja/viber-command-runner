@@ -1,14 +1,14 @@
 {
-  "name": "viber-command-runner",
-  "displayName": "Viber Command Runner",
-  "description": "Command panel for VS Code: run workspace scripts with built-in terminal logs, run history, and pluggable remote sync.",
+  "name": "viber-workbench",
+  "displayName": "Viber Workbench",
+  "description": "Workbench for VS Code / Cursor: run workspace scripts with built-in terminal logs, run history, and pluggable remote sync.",
   "version": "0.3.0",
   "publisher": "nojsja",
   "license": "MIT",
   "icon": "media/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nojsja/viber-command-runner.git"
+    "url": "https://github.com/nojsja/viber-workbench.git"
   },
   "engines": {
     "vscode": "^1.85.0"
@@ -22,78 +22,78 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "viberCommandRunner",
-          "title": "Command Runner",
+          "id": "viberWorkbench",
+          "title": "Viber Workbench",
           "icon": "media/terminal.svg"
         }
       ]
     },
     "views": {
-      "viberCommandRunner": [
+      "viberWorkbench": [
         {
           "type": "webview",
-          "id": "viberCommandRunner.launcher",
+          "id": "viberWorkbench.launcher",
           "name": "Launcher"
         }
       ]
     },
     "commands": [
       {
-        "command": "viberCommandRunner.openPanel",
-        "title": "Viber Command Runner: 打开命令面板",
+        "command": "viberWorkbench.openPanel",
+        "title": "Viber Workbench: 打开工作台",
         "icon": "$(rocket)",
-        "category": "Viber Command Runner"
+        "category": "Viber Workbench"
       },
       {
-        "command": "viberCommandRunner.refresh",
-        "title": "Viber Command Runner: 刷新命令面板",
+        "command": "viberWorkbench.refresh",
+        "title": "Viber Workbench: 刷新工作台",
         "icon": "$(refresh)",
-        "category": "Viber Command Runner"
+        "category": "Viber Workbench"
       },
       {
-        "command": "viberCommandRunner.syncRemote",
-        "title": "Viber Command Runner: 同步执行记录",
+        "command": "viberWorkbench.syncRemote",
+        "title": "Viber Workbench: 同步执行记录",
         "icon": "$(cloud-upload)",
-        "category": "Viber Command Runner"
+        "category": "Viber Workbench"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "viberCommandRunner.openPanel",
-          "when": "view == viberCommandRunner.launcher",
+          "command": "viberWorkbench.openPanel",
+          "when": "view == viberWorkbench.launcher",
           "group": "navigation"
         }
       ]
     },
     "configuration": {
-      "title": "Viber Command Runner",
+      "title": "Viber Workbench",
       "properties": {
-        "viberCommandRunner.commandsSource": {
+        "viberWorkbench.commandsSource": {
           "type": "string",
           "enum": [
             "command-runner",
-            "viberCommandRunner"
+            "viberWorkbench"
           ],
           "default": "command-runner",
-          "description": "命令来源：读取 workspace 的 command-runner.commands 或面板内管理的预设命令"
+          "description": "命令来源：读取 workspace 的 command-runner.commands 或工作台内管理的预设命令"
         },
-        "viberCommandRunner.terminalName": {
+        "viberWorkbench.terminalName": {
           "type": "string",
-          "default": "Viber Command Runner",
+          "default": "Viber Workbench",
           "description": "执行脚本时使用的终端名称"
         },
-        "viberCommandRunner.shellPath": {
+        "viberWorkbench.shellPath": {
           "type": "string",
           "default": "",
           "description": "Optional shell executable for embedded command runner (e.g. /bin/zsh). Leave empty to auto-detect from $SHELL."
         },
-        "viberCommandRunner.operator": {
+        "viberWorkbench.operator": {
           "type": "string",
           "default": "",
           "description": "操作人显示名，留空则自动读取 git config user.name / 系统用户名"
         },
-        "viberCommandRunner.uiLanguage": {
+        "viberWorkbench.uiLanguage": {
           "type": "string",
           "enum": [
             "en",
@@ -104,9 +104,9 @@
             "English UI (default)",
             "中文界面"
           ],
-          "description": "Command console UI language / 操作台界面语言"
+          "description": "Workbench UI language / 工作台界面语言"
         },
-        "viberCommandRunner.silentNotifications": {
+        "viberWorkbench.silentNotifications": {
           "type": "boolean",
           "default": false,
           "description": "Suppress VS Code native notification sounds/toasts. Panel inline toasts are always shown. / 静默 VS Code 系统通知（含音效）；面板内提示仍会显示"

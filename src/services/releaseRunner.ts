@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import type * as Pty from 'node-pty';
 import * as vscode from 'vscode';
+import { getExtensionConfigValue, getExtensionConfiguration } from '../config';
 import { ReleaseCommandDefinition } from '../types';
 import { t } from '../i18n';
 import { formatPtyInput, loadPanelPty } from './panelPty';
@@ -162,9 +163,7 @@ export class ReleaseRunner {
 }
 
 export function openExternalTerminalForFolder(folder: vscode.WorkspaceFolder): void {
-  const terminalName =
-    vscode.workspace.getConfiguration('viberCommandRunner', folder.uri).get<string>('terminalName') ??
-    'Viber Command Runner';
+  const terminalName = getExtensionConfigValue<string>('terminalName', 'Viber Workbench', folder.uri);
   const terminal = vscode.window.terminals.find((item) => item.name === terminalName)
     ?? vscode.window.createTerminal({
       name: terminalName,
@@ -793,7 +792,7 @@ export async function resolveOperator(
   folder: vscode.WorkspaceFolder,
   secrets: vscode.SecretStorage,
 ): Promise<{ name: string; email?: string }> {
-  const configured = vscode.workspace.getConfiguration('viberCommandRunner', folder.uri).get<string>('operator')?.trim();
+  const configured = getExtensionConfigValue<string | undefined>('operator', undefined, folder.uri)?.trim();
   if (configured) {
     return { name: configured };
   }
@@ -804,7 +803,7 @@ export async function resolveOperator(
     return { name: gitName, email: gitEmail || undefined };
   }
 
-  const secretName = await secrets.get('viberCommandRunner.operatorName');
+  const secretName = (await secrets.get('viberWorkbench.operatorName')) ?? (await secrets.get('viberCommandRunner.operatorName'));
   if (secretName) {
     return { name: secretName };
   }
@@ -823,10 +822,7 @@ async function execText(command: string, cwd: string): Promise<string> {
 }
 
 function resolveShellExecutable(): string {
-  const configured = vscode.workspace
-    .getConfiguration('viberCommandRunner')
-    .get<string>('shellPath')
-    ?.trim();
+  const configured = getExtensionConfigValue<string>('shellPath', '').trim();
   if (configured) {
     return configured;
   }
