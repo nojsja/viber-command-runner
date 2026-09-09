@@ -797,8 +797,10 @@ export async function resolveOperator(
     return { name: configured };
   }
 
-  const gitName = await execText('git config user.name', folder.uri.fsPath);
-  const gitEmail = await execText('git config user.email', folder.uri.fsPath);
+  const [gitName, gitEmail] = await Promise.all([
+    execText('git config user.name', folder.uri.fsPath),
+    execText('git config user.email', folder.uri.fsPath),
+  ]);
   if (gitName) {
     return { name: gitName, email: gitEmail || undefined };
   }

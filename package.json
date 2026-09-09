@@ -1,8 +1,8 @@
 {
   "name": "viber-workbench",
   "displayName": "Viber Workbench",
-  "description": "Workbench for VS Code / Cursor: run workspace scripts with built-in terminal logs, run history, and pluggable remote sync.",
-  "version": "0.3.0",
+  "description": "Workbench for VS Code / Cursor: run workspace scripts with built-in terminal logs, run history, and pluggable remote sync. Cursor users: install from Extensions (search \"Viber Workbench\") or Marketplace item nojsja.viber-workbench.",
+  "version": "0.4.0",
   "publisher": "nojsja",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -54,6 +54,12 @@
         "command": "viberWorkbench.syncRemote",
         "title": "Viber Workbench: 同步执行记录",
         "icon": "$(cloud-upload)",
+        "category": "Viber Workbench"
+      },
+      {
+        "command": "viberWorkbench.initCommandConfig",
+        "title": "Viber Workbench: 初始化命令配置",
+        "icon": "$(new-file)",
         "category": "Viber Workbench"
       }
     ],

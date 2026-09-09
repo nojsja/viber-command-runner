@@ -121,6 +121,23 @@ export function ExportIcon() {
   );
 }
 
+export function InitIcon() {
+  return (
+    <svg class="command-action-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        fill-rule="evenodd"
+        clip-rule="evenodd"
+        d="M3.5 1h6.914a1.5 1.5 0 0 1 1.06.44l2.086 2.086A1.5 1.5 0 0 1 14 4.586V12.5A1.5 1.5 0 0 1 12.5 14h-9A1.5 1.5 0 0 1 2 12.5v-9A1.5 1.5 0 0 1 3.5 2zM3 3v9.5a.5.5 0 0 0 .5.5h9a.5.5 0 0 0 .5-.5V5H9.5A1.5 1.5 0 0 1 8 3.5V3H3zm6 0v1.5a.5.5 0 0 0 .5.5H13L9 3z"
+      />
+      <path
+        fill="currentColor"
+        d="M8 5.75a.75.75 0 0 1 .75.75V7h1.5a.75.75 0 0 1 0 1.5H8.75v1.5a.75.75 0 0 1-1.5 0V8.5H5.75a.75.75 0 0 1 0-1.5h1.5V6.5A.75.75 0 0 1 8 5.75z"
+      />
+    </svg>
+  );
+}
+
 export function SettingsIcon() {
   return (
     <svg class="command-action-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">

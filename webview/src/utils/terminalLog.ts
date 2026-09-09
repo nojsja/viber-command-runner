@@ -89,6 +89,7 @@ export class TerminalLog {
     if (next.length > MAX_TERMINAL_CHARS) {
       next = next.slice(-MAX_TERMINAL_CHARS);
       this.buffer = next;
+      this.streamState = createTerminalStreamState();
       this.rebuildLines();
       this.bumpRevision();
       return;

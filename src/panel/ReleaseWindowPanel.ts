@@ -220,6 +220,7 @@ export class ReleaseWindowPanel {
       const syncRemote = mode === 'refresh';
       const state = await this.controller.bootstrap(syncRemote);
       postExtensionMessage(this.panel.webview, { type: 'state', payload: state });
+      this.controller.warmPanelShell();
 
       if (mode === 'initial') {
         void this.backgroundSyncRemote();

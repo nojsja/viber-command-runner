@@ -27,6 +27,7 @@ const QUERY_FLAGS =
 
 const FILTER_TAG = 1;
 const FILTER_TARGET = 8;
+const FILTER_EXTENSION_NAME = 7;
 const FILTER_SEARCH_TEXT = 10;
 const FILTER_EXCLUDE_FLAGS = 12;
 const EXCLUDE_UNPUBLISHED = '4096';
@@ -53,6 +54,13 @@ export type MarketplaceSearchResult = {
   pageSize: number;
   total: number;
   items: MarketplaceExtension[];
+};
+
+export type MarketplaceExtensionDetails = MarketplaceExtension & {
+  publisherDisplayName?: string;
+  readme?: string;
+  readmeHtml?: string;
+  marketplaceUrl: string;
 };
 
 type GalleryFile = {
@@ -124,6 +132,53 @@ export async function searchMarketplace(query: string, page = 1): Promise<Market
     pageSize: PAGE_SIZE,
     total,
     items,
+  };
+}
+
+export async function getMarketplaceExtensionDetails(
+  publisher: string,
+  name: string,
+): Promise<MarketplaceExtensionDetails> {
+  const extensionId = `${publisher}.${name}`;
+  const body = {
+    filters: [
+      {
+        criteria: [
+          { filterType: FILTER_TARGET, value: 'Microsoft.VisualStudio.Code' },
+          { filterType: FILTER_EXTENSION_NAME, value: extensionId },
+        ],
+        pageNumber: 1,
+        pageSize: 1,
+        sortBy: 0,
+        sortOrder: 0,
+      },
+    ],
+    assetTypes: [
+      'Microsoft.VisualStudio.Services.Icons.Default',
+      'Microsoft.VisualStudio.Services.Content.Welcome',
+      'Microsoft.VisualStudio.Services.Content.Details',
+    ],
+    flags: QUERY_FLAGS,
+  };
+
+  const payload = await postJson<GalleryQueryResponse>(MARKETPLACE_QUERY_URL, body);
+  const raw = payload.results?.[0]?.extensions?.[0];
+  const base = raw ? toMarketplaceExtension(raw) : undefined;
+  if (!base) {
+    throw new Error(`Extension not found: ${extensionId}`);
+  }
+
+  const versionInfo = raw?.versions?.[0];
+  const readme = versionInfo ? await fetchExtensionReadme(versionInfo) : undefined;
+  const source = readme || base.description || undefined;
+  const readmeHtml = source ? await renderReadmeHtml(source) : undefined;
+
+  return {
+    ...base,
+    publisherDisplayName: raw?.publisher?.displayName?.trim() || base.publisher,
+    readme: source,
+    readmeHtml,
+    marketplaceUrl: `https://marketplace.visualstudio.com/items?itemName=${encodeURIComponent(extensionId)}`,
   };
 }
 
@@ -313,4 +368,135 @@ function maybeGunzip(data: Buffer): Buffer {
 
 function isZip(data: Buffer): boolean {
   return data.length >= 4 && data[0] === 0x50 && data[1] === 0x4b;
+}
+
+async function fetchExtensionReadme(versionInfo: GalleryVersion): Promise<string | undefined> {
+  const files = versionInfo.files ?? [];
+  const details = files.find((file) => file.assetType === 'Microsoft.VisualStudio.Services.Content.Details');
+  const welcome = files.find((file) => file.assetType === 'Microsoft.VisualStudio.Services.Content.Welcome');
+  const assetBase = versionInfo.assetUri || versionInfo.fallbackAssetUri;
+  const urls = [
+    details?.source,
+    welcome?.source,
+    assetBase ? `${assetBase}/Microsoft.VisualStudio.Services.Content.Details` : undefined,
+  ].filter((url): url is string => Boolean(url));
+
+  for (const url of urls) {
+    try {
+      const text = (await requestBuffer(url)).toString('utf8').replace(/^\uFEFF/, '').trim();
+      if (text) {
+        return text;
+      }
+    } catch {
+      // Try the next README source.
+    }
+  }
+
+  return undefined;
+}
+
+async function renderReadmeHtml(source: string): Promise<string> {
+  const html = looksLikeHtml(source) ? source : await renderMarkdown(source);
+  return sanitizeHtml(html);
+}
+
+function looksLikeHtml(value: string): boolean {
+  const trimmed = value.trimStart();
+  return /^(<!DOCTYPE|<html\b|<body\b|<div\b|<p\b|<h[1-6]\b|<section\b|<article\b)/i.test(trimmed);
+}
+
+async function renderMarkdown(markdown: string): Promise<string> {
+  try {
+    const rendered = await vscode.commands.executeCommand<string>('markdown.api.render', markdown);
+    if (rendered?.trim()) {
+      return rendered;
+    }
+  } catch {
+    // Cursor / VS Code markdown renderer may be unavailable.
+  }
+  return fallbackMarkdownToHtml(markdown);
+}
+
+function fallbackMarkdownToHtml(markdown: string): string {
+  const fences: string[] = [];
+  const inlines: string[] = [];
+  let text = markdown.replace(/\r\n/g, '\n');
+  text = text.replace(/```([^\n`]*)\n([\s\S]*?)```/g, (_match, lang: string, code: string) => {
+    const index = fences.length;
+    const language = escapeHtml(lang.trim());
+    fences.push(
+      `<pre><code${language ? ` class="language-${language}"` : ''}>${escapeHtml(code.replace(/\n$/, ''))}</code></pre>`,
+    );
+    return `\u0000FENCE${index}\u0000`;
+  });
+  text = text.replace(/`([^`\n]+)`/g, (_match, code: string) => {
+    const index = inlines.length;
+    inlines.push(`<code>${escapeHtml(code)}</code>`);
+    return `\u0000INLINE${index}\u0000`;
+  });
+  text = escapeHtml(text);
+  text = text.replace(/^###### (.+)$/gm, '<h6>$1</h6>');
+  text = text.replace(/^##### (.+)$/gm, '<h5>$1</h5>');
+  text = text.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  text = text.replace(/^\s*[-*]{3,}\s*$/gm, '<hr />');
+  text = text.replace(/!\[([^\]]*)\]\((https?:[^)\s]+)\)/g, '<img alt="$1" src="$2" />');
+  text = text.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>');
+  text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  text = text.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  text = text.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+  text = text.replace(/(?:^|\n)((?:[-*] .+(?:\n|$))+)/g, (block) => {
+    const items = block
+      .trim()
+      .split('\n')
+      .map((line) => `<li>${line.replace(/^[-*] /, '')}</li>`)
+      .join('');
+    return `\n<ul>${items}</ul>\n`;
+  });
+  text = text.replace(/(?:^|\n)((?:\d+\. .+(?:\n|$))+)/g, (block) => {
+    const items = block
+      .trim()
+      .split('\n')
+      .map((line) => `<li>${line.replace(/^\d+\. /, '')}</li>`)
+      .join('');
+    return `\n<ol>${items}</ol>\n`;
+  });
+  text = text
+    .split(/\n{2,}/)
+    .map((block) => {
+      const trimmed = block.trim();
+      if (!trimmed) {
+        return '';
+      }
+      if (/^<(h[1-6]|ul|ol|pre|hr|blockquote)/.test(trimmed)) {
+        return trimmed;
+      }
+      return `<p>${trimmed.replace(/\n/g, '<br />')}</p>`;
+    })
+    .join('\n');
+  text = text.replace(/\u0000INLINE(\d+)\u0000/g, (_match, index: string) => inlines[Number(index)] ?? '');
+  text = text.replace(/\u0000FENCE(\d+)\u0000/g, (_match, index: string) => fences[Number(index)] ?? '');
+  return text;
+}
+
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<object[\s\S]*?<\/object>/gi, '')
+    .replace(/\son\w+="[^"]*"/gi, '')
+    .replace(/\son\w+='[^']*'/gi, '')
+    .replace(/href="(?!https?:|mailto:)[^"]*"/gi, 'href="#"')
+    .replace(/src="(?!https?:|data:)[^"]*"/gi, 'src=""');
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
 }

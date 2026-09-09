@@ -5,12 +5,15 @@ import {
   searchMarketplace,
   type MarketplaceExtension,
 } from '../services/marketplaceService';
+import { ExtensionPreviewPanel } from './ExtensionPreviewPanel';
 import { ReleaseWindowPanel } from './ReleaseWindowPanel';
 
 type LauncherMessage =
   | { type: 'openPanel' }
   | { type: 'reloadPanel' }
+  | { type: 'initCommandConfig' }
   | { type: 'searchStore'; query: string; page?: number }
+  | { type: 'previewExtension'; item: MarketplaceExtension }
   | { type: 'installExtension'; publisher: string; name: string; version: string; id: string; displayName: string };
 
 export class ReleaseLauncherProvider implements vscode.WebviewViewProvider {
@@ -36,8 +39,16 @@ export class ReleaseLauncherProvider implements vscode.WebviewViewProvider {
         }
         return;
       }
+      if (message.type === 'initCommandConfig') {
+        void vscode.commands.executeCommand('viberWorkbench.initCommandConfig');
+        return;
+      }
       if (message.type === 'searchStore') {
         void this.handleSearch(webviewView.webview, message.query, message.page ?? 1);
+        return;
+      }
+      if (message.type === 'previewExtension') {
+        ExtensionPreviewPanel.createOrShow(this.context, message.item, webviewView.webview);
         return;
       }
       if (message.type === 'installExtension') {
@@ -63,9 +74,11 @@ export class ReleaseLauncherProvider implements vscode.WebviewViewProvider {
     extension: Pick<MarketplaceExtension, 'publisher' | 'name' | 'version' | 'id' | 'displayName'>,
   ): Promise<void> {
     webview.postMessage({ type: 'storeInstallState', id: extension.id, status: 'installing' });
+    ExtensionPreviewPanel.notifyInstallState(extension.id, 'installing');
     try {
       await downloadAndInstallExtension(this.context, extension);
       webview.postMessage({ type: 'storeInstallState', id: extension.id, status: 'installed' });
+      ExtensionPreviewPanel.notifyInstallState(extension.id, 'installed');
       const reload = t('store.reload');
       const choice = await vscode.window.showInformationMessage(
         t('store.installSuccess', { name: extension.displayName }),
@@ -76,6 +89,7 @@ export class ReleaseLauncherProvider implements vscode.WebviewViewProvider {
       }
     } catch (error) {
       webview.postMessage({ type: 'storeInstallState', id: extension.id, status: 'error' });
+      ExtensionPreviewPanel.notifyInstallState(extension.id, 'error');
       void vscode.window.showErrorMessage(
         t('store.installFailed', { name: extension.displayName, message: errorMessage(error) }),
       );
@@ -89,6 +103,8 @@ export class ReleaseLauncherProvider implements vscode.WebviewViewProvider {
       description: t('launcher.description'),
       open: t('launcher.open'),
       reloadTitle: t('launcher.reloadTitle'),
+      init: t('launcher.init'),
+      initTitle: t('launcher.initTitle'),
       storeTitle: t('store.title'),
       storeDescription: t('store.description'),
       searchPlaceholder: t('store.searchPlaceholder'),
@@ -104,6 +120,7 @@ export class ReleaseLauncherProvider implements vscode.WebviewViewProvider {
       installs: t('store.installs', { count: '{count}' }),
       toggle: t('store.toggle'),
       toggleHint: t('store.toggleHint'),
+      previewHint: t('store.previewHint'),
     };
 
     return `<!DOCTYPE html>
@@ -143,6 +160,14 @@ export class ReleaseLauncherProvider implements vscode.WebviewViewProvider {
       display: flex;
       gap: 8px;
       align-items: stretch;
+      margin-bottom: 8px;
+    }
+    #init {
+      width: 100%;
+      padding: 8px 12px;
+      background: var(--vscode-button-secondaryBackground, rgba(127, 127, 127, 0.18));
+      color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+      font-size: 12px;
     }
     button {
       border: none;
@@ -279,10 +304,22 @@ export class ReleaseLauncherProvider implements vscode.WebviewViewProvider {
       min-width: 0;
     }
     .name {
+      display: block;
+      width: 100%;
+      padding: 0;
+      background: transparent;
+      color: inherit;
+      text-align: left;
       font-size: 12px;
       font-weight: 600;
       line-height: 1.3;
       word-break: break-word;
+      cursor: pointer;
+      border-radius: 0;
+    }
+    .name:hover {
+      text-decoration: underline;
+      color: var(--vscode-textLink-foreground);
     }
     .sub {
       margin-top: 2px;
@@ -373,6 +410,7 @@ export class ReleaseLauncherProvider implements vscode.WebviewViewProvider {
         </svg>
       </button>
     </div>
+    <button id="init" title="${escapeHtml(labels.initTitle)}">${escapeHtml(labels.init)}</button>
   </div>
   <section class="store">
     <h3>${escapeHtml(labels.storeTitle)}</h3>
@@ -412,6 +450,9 @@ export class ReleaseLauncherProvider implements vscode.WebviewViewProvider {
     });
     document.getElementById('reload').addEventListener('click', () => {
       vscode.postMessage({ type: 'reloadPanel' });
+    });
+    document.getElementById('init').addEventListener('click', () => {
+      vscode.postMessage({ type: 'initCommandConfig' });
     });
     document.getElementById('search').addEventListener('click', () => runSearch());
     queryEl.addEventListener('keydown', (event) => {
@@ -520,9 +561,14 @@ export class ReleaseLauncherProvider implements vscode.WebviewViewProvider {
 
       const meta = document.createElement('div');
       meta.className = 'meta';
-      const name = document.createElement('div');
+      const name = document.createElement('button');
       name.className = 'name';
+      name.type = 'button';
+      name.title = labels.previewHint;
       name.textContent = item.displayName;
+      name.addEventListener('click', () => {
+        vscode.postMessage({ type: 'previewExtension', item });
+      });
       const sub = document.createElement('div');
       sub.className = 'sub';
       const count = typeof item.installCount === 'number' ? ' · ' + labels.installs.replace('{count}', formatCount(item.installCount)) : '';
@@ -541,6 +587,7 @@ export class ReleaseLauncherProvider implements vscode.WebviewViewProvider {
       actions.className = 'card-actions';
       const button = document.createElement('button');
       button.className = 'install';
+      button.type = 'button';
       const installStatus = state.installing[item.id];
       const sameVersion = item.installed && item.installedVersion === item.version;
       if (installStatus === 'installing') {

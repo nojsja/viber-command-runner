@@ -4,7 +4,6 @@ import { isScrolledToBottom } from '../utils/terminal';
 
 const LINE_HEIGHT_PX = 16;
 const OVERSCAN_LINES = 12;
-const STICKY_THRESHOLD_PX = 24;
 
 interface VirtualTerminalOutputProps {
   id?: string;
@@ -80,7 +79,7 @@ export function VirtualTerminalOutput({
     if (!node) {
       return;
     }
-    stickToBottomRef.current = isScrolledToBottom(node, STICKY_THRESHOLD_PX);
+    stickToBottomRef.current = isScrolledToBottom(node);
     setViewport({
       scrollTop: node.scrollTop,
       height: node.clientHeight,

@@ -34,6 +34,7 @@ import {
   exportConfigToFile,
   importConfigFromFile,
 } from '../services/configBundleService';
+import { initializeCommandConfig } from '../services/commandConfigInitService';
 
 export function pickWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
   const folders = vscode.workspace.workspaceFolders;
@@ -100,6 +101,11 @@ export class ReleasePanelController {
     });
   }
 
+  /** Pre-warm the panel shell after the UI is shown so the first command starts faster. */
+  warmPanelShell(): void {
+    void this.ensurePanelShell();
+  }
+
   async refresh(): Promise<PanelState> {
     const state = await this.bootstrap(true);
     await this.onStateChanged?.(state);
@@ -154,13 +160,8 @@ export class ReleasePanelController {
     }
     if (syncRemote && (await this.remoteSync!.isEnabled())) {
       await this.syncRemote({ quiet: true, interactive: false });
-    } else {
-      await this.store!.load();
     }
     await this.reconcileRunningRecords();
-    if (!this.parallelMode) {
-      await this.ensurePanelShell();
-    }
     return this.buildState();
   }
 
@@ -468,6 +469,40 @@ export class ReleasePanelController {
     }
 
     return this.buildState();
+  }
+
+  async initCommandConfig(): Promise<PanelState> {
+    const folder = this.ensureWorkspaceServices();
+    if (!folder || !this.customCommands || !this.presetCommands) {
+      this.notify('warn', t('toast.openWorkspace'));
+      return this.buildEmptyState();
+    }
+
+    if (this.runningRecordId || this.panelShell?.isRunning() || this.parallelTasks.size > 0) {
+      this.notify('warn', t('toast.runInProgress'));
+      return this.buildState();
+    }
+
+    try {
+      const result = await initializeCommandConfig(folder, { interactive: true });
+      if (!result) {
+        this.notify('info', t('config.initCancelled'));
+        return this.buildState();
+      }
+
+      this.presetCommands.invalidateCache();
+      const message = result.reinitialized
+        ? t('config.initReinitialized', { path: result.settingsPath })
+        : t('config.initSuccess', { path: result.settingsPath });
+      this.notify('info', message);
+      const state = await this.buildState();
+      await this.onStateChanged?.(state);
+      return state;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.notify('error', t('config.initFailed', { message }));
+      return this.buildState();
+    }
   }
 
   async importConfig(): Promise<PanelState> {
@@ -1018,15 +1053,23 @@ export class ReleasePanelController {
       return this.buildEmptyState();
     }
 
-    const bundle = await this.store.load();
-    const commandGroups = await this.loadCommandGroups();
+    const [bundle, commandGroups] = await Promise.all([
+      this.store.load(),
+      this.loadCommandGroups(),
+    ]);
     const commands = flattenCommands(commandGroups);
-    const groupFold = await this.uiState!.getGroupFold(commandGroups.map((group) => group.id));
-    const terminalFold = await this.uiState!.getTerminalFold();
-    this.parallelMode = await this.uiState!.getParallelMode();
-    const operator = await resolveOperator(folder, this.secrets);
-    const branch = await readGitBranch(folder);
-    const version = await readPubspecVersion(folder);
+    const groupIds = commandGroups.map((group) => group.id);
+
+    const [groupFold, terminalFold, parallelMode, operator, branch, version, remoteSyncEnabled] = await Promise.all([
+      this.uiState!.getGroupFold(groupIds),
+      this.uiState!.getTerminalFold(),
+      this.uiState!.getParallelMode(),
+      resolveOperator(folder, this.secrets),
+      readGitBranch(folder),
+      readPubspecVersion(folder),
+      this.remoteSync.isEnabled(),
+    ]);
+    this.parallelMode = parallelMode;
 
     return {
       commands,
@@ -1038,7 +1081,7 @@ export class ReleasePanelController {
       branch,
       appVersion: version.version,
       appBuild: version.build,
-      remoteSyncEnabled: await this.remoteSync.isEnabled(),
+      remoteSyncEnabled,
       remoteSyncedAt: this.remoteSyncedAt,
       syncing: this.syncing,
       runningRecordId: this.runningRecordId,

@@ -1,7 +1,11 @@
 import * as vscode from 'vscode';
 import { ReleaseLauncherProvider } from './panel/ReleaseLauncherProvider';
 import { ReleaseWindowPanel } from './panel/ReleaseWindowPanel';
+import { runCommandConfigInit } from './services/commandConfigInitService';
 import { migrateLegacyPresetCommands } from './services/presetCommandMigration';
+import { pickWorkspaceFolder } from './panel/ReleasePanelController';
+import { t } from './i18n';
+import { showUserNotification } from './config';
 import { registerRemoteSyncProvider } from './services/remoteSyncProvider';
 import type { RemoteSyncProvider } from './services/remoteSyncProvider';
 
@@ -57,6 +61,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<{
         return;
       }
       await controller.syncRemote(true);
+    }),
+    vscode.commands.registerCommand('viberWorkbench.initCommandConfig', async () => {
+      const folder = pickWorkspaceFolder();
+      if (!folder) {
+        showUserNotification('warn', t('toast.openWorkspace'));
+        return;
+      }
+      const controller = ReleaseWindowPanel.getCurrentController();
+      if (controller) {
+        await controller.initCommandConfig();
+        return;
+      }
+      await runCommandConfigInit(folder, { interactive: true });
     }),
   );
 

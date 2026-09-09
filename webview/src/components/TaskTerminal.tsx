@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { useRef } from 'preact/hooks';
 import { t } from '../i18n';
 import { usePanel } from '../context/PanelContext';
 import type { TaskSessionView } from '../types';
@@ -21,7 +21,6 @@ export function TaskTerminal({ session }: TaskTerminalProps) {
     interruptTerminal,
     submitTaskTerminalLine,
     setActiveTaskTerminalFocus,
-    scrollTaskTerminalToBottom,
   } = usePanel();
   const outputRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -43,12 +42,6 @@ export function TaskTerminal({ session }: TaskTerminalProps) {
         : t('terminal.failed', {
             exit: session.exitCode !== undefined ? ` (exit ${session.exitCode})` : '',
           });
-
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      scrollTaskTerminalToBottom(recordId, outputRef.current);
-    });
-  }, [output.revision, recordId, scrollTaskTerminalToBottom]);
 
   const handleFoldClick = () => {
     setTaskTerminalFold(recordId, !expanded);

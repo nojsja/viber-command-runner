@@ -14,6 +14,7 @@ import {
   isScrolledToBottom,
   splitPromptContext,
   stripAnsiForDisplay,
+  stripInternalTerminalNoise,
   terminalPreviewLine,
   TERMINAL_DEFAULT_PROMPT,
 } from '../utils/terminal';
@@ -123,7 +124,7 @@ export interface PanelContextValue {
     destinations?: string[];
   }) => boolean;
   restorePendingTaskTerminalFocus: () => void;
-  scrollTaskTerminalToBottom: (recordId: string, node?: HTMLElement | null) => void;
+  scrollTaskTerminalToBottom: (recordId: string, node?: HTMLElement | null, force?: boolean) => void;
   scrollAllTaskTerminalsToBottom: (preferredRecordId?: string) => void;
   positionStickyTerminal: (stickyEl?: HTMLElement | null) => void;
   toggleTerminalFold: (target: 'sticky' | 'panel') => void;
@@ -256,14 +257,14 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
   );
 
   const appendTerminal = useCallback((chunk: string, stream: 'stdout' | 'stderr') => {
-    mainTerminalLogRef.current?.append(chunk);
+    mainTerminalLogRef.current?.append(stripInternalTerminalNoise(chunk));
     if (stream === 'stderr') {
       setTerminalHasStderr(true);
     }
   }, []);
 
   const appendTaskTerminal = useCallback((recordId: string, chunk: string, stream: 'stdout' | 'stderr') => {
-    getOrCreateTaskLog(recordId).append(chunk);
+    getOrCreateTaskLog(recordId).append(stripInternalTerminalNoise(chunk));
     if (stream === 'stderr') {
       setTaskStderr((prev) => ({ ...prev, [recordId]: true }));
     }
@@ -598,28 +599,21 @@ export function PanelProvider({ children }: { children: ComponentChildren }) {
     terminalSticky.style.top = `${Math.max(8, Math.round(bottom + 8))}px`;
   }, []);
 
-  const scrollTaskTerminalToBottom = useCallback((recordId: string, node?: HTMLElement | null) => {
+  const scrollTaskTerminalToBottom = useCallback((recordId: string, node?: HTMLElement | null, force = false) => {
     const el = node ?? document.getElementById(`task-terminal-output-${recordId}`);
-    if (el) {
+    if (el && (force || isScrolledToBottom(el))) {
       el.scrollTop = el.scrollHeight;
     }
   }, []);
 
-  const scrollAllTaskTerminalsToBottom = useCallback(
-    (preferredRecordId?: string) => {
-      document.querySelectorAll('.command-task-output').forEach((node) => {
-        const el = node as HTMLElement;
-        const recordId = el.id.replace('task-terminal-output-', '');
-        if (!recordId) {
-          return;
-        }
-        if (!preferredRecordId || recordId === preferredRecordId || isScrolledToBottom(el)) {
-          el.scrollTop = el.scrollHeight;
-        }
-      });
-    },
-    [],
-  );
+  const scrollAllTaskTerminalsToBottom = useCallback((_preferredRecordId?: string) => {
+    document.querySelectorAll('.command-task-output').forEach((node) => {
+      const el = node as HTMLElement;
+      if (isScrolledToBottom(el)) {
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+  }, []);
 
   const restorePendingTaskTerminalFocus = useCallback(() => {
     const recordId = pendingTaskTerminalFocus || activeTaskTerminalFocus;
