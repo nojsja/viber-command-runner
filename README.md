@@ -34,13 +34,70 @@ npm run watch:webview  # webview UI
 npm run package
 ```
 
-Install:
+This generates `viber-workbench-<version>.vsix` in the project root (version comes from `package.json`).
+
+### Local install
 
 ```bash
 code --install-extension viber-workbench-0.3.0.vsix
 # or
 cursor --install-extension viber-workbench-0.3.0.vsix
 ```
+
+## Publish to VS Code Marketplace
+
+Publishing uses [`@vscode/vsce`](https://github.com/microsoft/vscode-vsce). The `code` / `cursor` CLI can only install VSIX locally; upload to the Marketplace must go through `vsce`.
+
+### 1. Create a Personal Access Token
+
+1. Open Azure DevOps Personal Access Tokens:  
+   https://dev.azure.com/{your-org}/_usersSettings/tokens  
+   (Or go to https://dev.azure.com/ → profile menu → **Personal access tokens** → **+ New Token**)
+2. Set **Organization** to **All accessible organizations**
+3. Under **Scopes**, choose **Custom defined** → **Show all scopes** → **Marketplace → Manage**
+4. Create the token and copy it
+
+Docs:
+
+- https://code.visualstudio.com/api/working-with-extensions/publishing-extension#get-a-personal-access-token
+- https://marketplace.visualstudio.com/manage/publishers/
+
+### 2. Authenticate
+
+Either log in once (stores the token for the publisher):
+
+```bash
+npx @vscode/vsce login nojsja
+```
+
+Or pass the token per command:
+
+```bash
+export VSCE_PAT=your_personal_access_token
+```
+
+### 3. Publish an existing VSIX
+
+After `npm run package`:
+
+```bash
+npx @vscode/vsce publish --packagePath viber-workbench-0.3.0.vsix
+```
+
+Replace the filename with the version you just built.
+
+### 4. Publish directly from source (optional)
+
+Packages and publishes in one step (can bump version with `vsce publish patch|minor|major`):
+
+```bash
+npx @vscode/vsce publish
+```
+
+### After publish
+
+- Extension page: https://marketplace.visualstudio.com/items?itemName=nojsja.viber-workbench
+- Publisher hub: https://marketplace.visualstudio.com/manage/publishers/nojsja/extensions/viber-workbench/hub
 
 ## Configuration
 
