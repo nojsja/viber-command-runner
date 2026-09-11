@@ -278,9 +278,15 @@ export function appendTerminalStream(
 /** Hide shell-echoed exit markers from the rendered terminal log. */
 export function stripInternalTerminalNoise(text: string): string {
   return String(text)
+    .replace(/[^\n]*viber-workbench-runs[^\n]*/g, '')
+    .replace(/stty\s*[-–—]?echo[^\n]*/g, '')
+    .replace(/setopt NO_BANG_HIST[\s\S]*?builtin printf[\s\S]*?"\$\?__"/g, '')
+    .replace(/set \+H[\s\S]*?builtin printf[\s\S]*?"\$\?__"/g, '')
+    .replace(/eval "\$\(printf '%s'[\s\S]*?base64 -D;?\s*\}?\s*\)"/g, '')
     .replace(/; builtin print -r -- '__VIBER_EXIT_[^'\n]+'\n?/g, '')
     .replace(/; command printf '%s\\n' '__VIBER_EXIT_[^'\n]+'\n?/g, '')
-    .replace(/__VIBER_EXIT_[a-f0-9-]+\d+__\n?/gi, '');
+    .replace(/builtin printf '%s\\n'/g, '')
+    .replace(/__VIBER_EXIT_[a-f0-9-]+(?:__\d+__)?/gi, '');
 }
 
 export function stripAnsiForDisplay(text: string): string {

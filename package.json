@@ -2,7 +2,7 @@
   "name": "viber-workbench",
   "displayName": "Viber Workbench",
   "description": "Workbench for VS Code / Cursor: run workspace scripts with built-in terminal logs, run history, and pluggable remote sync. Cursor users: install from Extensions (search \"Viber Workbench\") or Marketplace item nojsja.viber-workbench.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "nojsja",
   "license": "MIT",
   "icon": "media/icon.png",

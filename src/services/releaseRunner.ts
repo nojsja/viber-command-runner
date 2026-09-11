@@ -176,6 +176,7 @@ interface ActiveShellRun {
   recordId: string;
   marker: string;
   buffer: string;
+  scriptPath?: string;
   cancelRequested: boolean;
   onFinished: (result: RunFinishedResult) => void;
   resolve: (result: RunFinishedResult) => void;
@@ -199,6 +200,7 @@ export class PanelShellSession {
   private lastOutputAt = 0;
   private cancelEscalationTimers: NodeJS.Timeout[] = [];
   private ptyDisposables: Pty.IDisposable[] = [];
+  private pendingScriptPaths = new Set<string>();
 
   constructor(private readonly folder: vscode.WorkspaceFolder) {}
 
@@ -261,20 +263,24 @@ export class PanelShellSession {
 
     const marker = `__VIBER_EXIT_${recordId}__`;
     const shell = resolveShellExecutable();
-    const script = buildTrackedCommandScript(definition.command, marker, shell);
+    const scriptPath = await writeTrackedCommandFile(definition.command, marker, shell);
+    this.pendingScriptPaths.add(scriptPath);
+    const submitted = buildTrackedCommandInvocation(scriptPath, definition.command, marker, shell);
 
     return await new Promise((resolve, reject) => {
       this.activeRun = {
         recordId,
         marker,
         buffer: '',
+        scriptPath,
         cancelRequested: false,
         onFinished,
         resolve,
         reject,
       };
-      if (!this.writeStdin(script)) {
+      if (!this.writeStdin(submitted)) {
         this.activeRun = undefined;
+        void this.cleanupScript(scriptPath);
         reject(new Error(t('runner.shellNotReady')));
         return;
       }
@@ -325,6 +331,17 @@ export class PanelShellSession {
     this.activeRun = undefined;
     this.outputHandler = undefined;
     this.shellSettleChain = Promise.resolve();
+    for (const scriptPath of this.pendingScriptPaths) {
+      void this.cleanupScript(scriptPath);
+    }
+  }
+
+  private async cleanupScript(scriptPath?: string): Promise<void> {
+    if (!scriptPath) {
+      return;
+    }
+    this.pendingScriptPaths.delete(scriptPath);
+    await fs.unlink(scriptPath).catch(() => undefined);
   }
 
   private recoverBrokenShellPrompt(chunk: string): void {
@@ -372,6 +389,7 @@ export class PanelShellSession {
     });
 
     this.ptyProcess = ptyProcess;
+    this.lastOutputAt = Date.now();
     this.ptyDisposables.push(
       ptyProcess.onData((data) => {
         this.handleOutput(data, 'stdout');
@@ -382,6 +400,7 @@ export class PanelShellSession {
         this.finishActiveRun(resolveExitCode(exitCode, signalToNodeSignal(signal)), true);
       }),
     );
+    await this.waitForOutputQuiet(SHELL_SETTLE_QUIET_MS, SHELL_SETTLE_MAX_MS);
   }
 
   private async startPipeShell(): Promise<void> {
@@ -421,7 +440,10 @@ export class PanelShellSession {
 
   private handleOutput(chunk: string, stream: 'stdout' | 'stderr'): void {
     this.lastOutputAt = Date.now();
-    this.outputHandler?.(chunk, stream);
+    const visible = stripWrapperFragments(chunk);
+    if (visible) {
+      this.outputHandler?.(visible, stream);
+    }
     this.recoverBrokenShellPrompt(chunk);
     if (!this.activeRun) {
       return;
@@ -446,6 +468,7 @@ export class PanelShellSession {
     };
     const run = this.activeRun;
     this.activeRun = undefined;
+    void this.cleanupScript(run.scriptPath);
     this.outputHandler?.(
       `\n[${cancelled ? 'cancelled' : 'exit'} ${result.exitCode}]\n`,
       cancelled || result.exitCode !== 0 ? 'stderr' : 'stdout',
@@ -460,6 +483,7 @@ export class PanelShellSession {
     }
     const run = this.activeRun;
     this.activeRun = undefined;
+    void this.cleanupScript(run.scriptPath);
     const result: RunFinishedResult = {
       exitCode: run.cancelRequested ? 130 : exitCode,
       cancelled: run.cancelRequested || cancelled,
@@ -660,23 +684,61 @@ function buildInteractiveShellInvocation(shell: string): ShellInvocation {
   return { executable: shell, args: ['/V:ON', '/Q', '/K'] };
 }
 
-function buildTrackedCommandScript(command: string, marker: string, shell: string): string {
-  const quotedMarker = marker.replace(/'/g, `'\"'\"'`);
+function quoteShellArg(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+async function writeTrackedCommandFile(command: string, marker: string, shell: string): Promise<string> {
+  const dir = path.join(os.tmpdir(), 'viber-workbench-runs');
+  await fs.mkdir(dir, { recursive: true });
+  const filePath = path.join(dir, `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}.sh`);
+  const quotedMarker = marker.replace(/'/g, `'\\''`);
+  const shellBase = path.basename(shell).toLowerCase();
+  const body = shellBase.includes('zsh')
+    ? `emulate -L zsh
+unsetopt BANG_HIST
+set +e
+${command}
+__viber_ec=$?
+builtin printf '%s\\n' '${quotedMarker}'"$__viber_ec"__
+`
+    : `set +e
+${command}
+__viber_ec=$?
+builtin printf '%s\\n' '${quotedMarker}'"$__viber_ec"__
+`;
+  await fs.writeFile(filePath, body, { encoding: 'utf8', mode: 0o600 });
+  return filePath;
+}
+
+function buildTrackedCommandInvocation(
+  scriptPath: string,
+  command: string,
+  marker: string,
+  shell: string,
+): string {
   if (process.platform !== 'win32') {
-    const shellBase = path.basename(shell).toLowerCase();
-    // Single-line scripts avoid interactive zsh/bash entering continuation prompts (dquote>).
-    if (shellBase.includes('zsh')) {
-      return `${command}; builtin print -r -- '${quotedMarker}'$?'\''__'\''\n`;
-    }
-    return `${command}; command printf '%s\\n' '${quotedMarker}'$?'\''__'\''\n`;
+    return `. ${quoteShellArg(scriptPath)}\n`;
   }
 
+  const quotedMarker = marker.replace(/'/g, `'\"'\"'`);
   const shellBase = path.basename(shell).toLowerCase();
   if (shellBase.includes('powershell') || shellBase === 'pwsh.exe') {
     return `${command}; Write-Host '${quotedMarker}'$LASTEXITCODE'__'\n`;
   }
 
   return `${command} & echo ${quotedMarker}!ERRORLEVEL!__\r\n`;
+}
+
+function stripWrapperFragments(text: string): string {
+  return text
+    .replace(/[^\n]*viber-workbench-runs[^\n]*/g, '')
+    .replace(/stty\s*[-–—]?echo[^\n]*/g, '')
+    .replace(/setopt NO_BANG_HIST[\s\S]*?builtin printf[\s\S]*?"\$\?__"/g, '')
+    .replace(/set \+H[\s\S]*?builtin printf[\s\S]*?"\$\?__"/g, '')
+    .replace(/eval "\$\(printf '%s'[\s\S]*?base64 -D;?\s*\}?\s*\)"/g, '')
+    .replace(/builtin printf '%s\\n'/g, '')
+    .replace(/__VIBER_EXIT_[a-f0-9-]+(?:__\d+__)?/gi, '');
 }
 
 function decodeShellOutput(buf: Buffer): string {

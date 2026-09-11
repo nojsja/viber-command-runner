@@ -2,6 +2,7 @@ import {
   appendTerminalStream,
   createTerminalStreamState,
   MAX_TERMINAL_CHARS,
+  stripInternalTerminalNoise,
   type TerminalStreamState,
 } from './terminal';
 
@@ -85,7 +86,7 @@ export class TerminalLog {
     this.pending = '';
 
     const previous = this.buffer;
-    let next = appendTerminalStream(previous, chunk, this.streamState);
+    let next = stripInternalTerminalNoise(appendTerminalStream(previous, chunk, this.streamState));
     if (next.length > MAX_TERMINAL_CHARS) {
       next = next.slice(-MAX_TERMINAL_CHARS);
       this.buffer = next;
